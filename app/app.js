@@ -254,9 +254,9 @@
       const hit = await idb.get('thumbs', id).catch(() => null);
       if (hit) S.thumbs.set(id, hit); else need.push(id);
     }
-    for (let i = 0; i < need.length; i += 12) {
+    for (let i = 0; i < need.length; i += 6) {
       try {
-        const r = await api('thumbs', { ids: need.slice(i, i + 12) });
+        const r = await api('thumbs', { ids: need.slice(i, i + 6) });
         Object.keys(r.thumbs).forEach((id) => { if (r.thumbs[id]) { S.thumbs.set(id, r.thumbs[id]); idb.put('thumbs', r.thumbs[id], id).catch(() => {}); } });
       } catch (e) { break; }
     }
@@ -412,7 +412,8 @@
     $('#app').innerHTML = '<div class="login"><div class="brand"><img src="icons/icon-192.png" alt=""><div><b>HLEP DPR</b><span>SJ Chenderoh · Elektrik</span></div></div>' +
       '<div class="rise"><div class="hero"><h1>Laporan harian,<br><em>semudah snap &amp; hantar.</em></h1><p>Ambil gambar, pilih sistem, tulis ringkas. AI susun ayat dalam English.</p></div>' + ART.hero + '</div>' +
       '<div id="who" class="rise" style="animation-delay:.08s"><div class="section-t"><h2>Siapa anda?</h2><span id="teamn"></span></div><div class="people" id="people">' +
-      '<div class="skel" style="height:64px"></div><div class="skel" style="height:64px"></div><div class="skel" style="height:64px"></div><div class="skel" style="height:64px"></div></div></div></div>';
+      '<div class="skel" style="height:64px"></div><div class="skel" style="height:64px"></div><div class="skel" style="height:64px"></div><div class="skel" style="height:64px"></div></div>' +
+      '<p style="text-align:center;margin-top:18px"><a class="link" href="media/cara-guna.mp4" target="_blank" rel="noopener">▶ Tonton video cara guna (80 saat)</a></p></div></div>';
     let team = ls.get('team', []);
     const draw = () => {
       $('#teamn').textContent = team.length ? team.length + ' orang' : '';
@@ -1040,6 +1041,7 @@
     if (u.eng) h += '<div class="section-t"><h2>Tetapan laporan</h2><span>PTW · PIC · masa</span></div><div class="card" id="setl"><button class="btn soft block" data-setl>' + ic('gear', 's') + ' Buka tetapan</button></div>';
     h += '<div class="section-t"><h2>Akaun</h2></div><div class="card">' +
       '<button class="list-row" style="width:100%;text-align:left" data-pin><span class="ic">' + ic('key', 's') + '</span><span class="grow t">Tukar PIN</span>' + ic('right', 's') + '</button>' +
+      '<a class="list-row" style="width:100%;text-align:left;color:inherit;text-decoration:none" href="media/cara-guna.mp4" target="_blank" rel="noopener"><span class="ic" style="background:var(--pink-50);color:#C0508A">' + ic('spark', 's') + '</span><span class="grow"><span class="t">Video cara guna</span><br><span class="s">80 saat · langkah demi langkah</span></span>' + ic('right', 's') + '</a>' +
       '<button class="list-row" style="width:100%;text-align:left" data-install><span class="ic">' + ic('phone', 's') + '</span><span class="grow"><span class="t">Pasang di skrin utama</span><br><span class="s">Buka seperti app biasa</span></span>' + ic('right', 's') + '</button>' +
       '<button class="list-row" style="width:100%;text-align:left;color:var(--rose)" data-out><span class="ic" style="background:var(--rose-50);color:var(--rose)">' + ic('logout', 's') + '</span><span class="grow t">Log keluar</span></button></div>';
     h += '<p class="hint" style="text-align:center;margin-top:18px">HLEP DPR web-app ' + APP_VERSION + (S.meta ? ' · backend ' + esc(S.meta.v) + ' · bot ' + esc(S.meta.bot) : '') + '</p>';

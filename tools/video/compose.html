@@ -1,0 +1,190 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<style>
+@font-face { font-family: J; font-weight: 500; src: url(FONTS/plus-jakarta-sans-latin-500-normal.woff2); }
+@font-face { font-family: J; font-weight: 600; src: url(FONTS/plus-jakarta-sans-latin-600-normal.woff2); }
+@font-face { font-family: J; font-weight: 700; src: url(FONTS/plus-jakarta-sans-latin-700-normal.woff2); }
+@font-face { font-family: J; font-weight: 800; src: url(FONTS/plus-jakarta-sans-latin-800-normal.woff2); }
+* { box-sizing: border-box; }
+html, body { margin: 0; width: 1080px; height: 1920px; overflow: hidden; font-family: J, sans-serif; color: #2A2547; -webkit-font-smoothing: antialiased; }
+#stage { position: relative; width: 1080px; height: 1920px; overflow: hidden; background: #F4F1FF; }
+.blob { position: absolute; border-radius: 50%; filter: blur(70px); opacity: .85; }
+#head { position: absolute; left: 70px; right: 70px; top: 118px; }
+.chip { display: inline-flex; align-items: center; gap: 12px; background: #fff; border-radius: 999px; padding: 12px 24px 12px 14px; font-weight: 800; font-size: 26px; letter-spacing: .08em; color: #5E4FD8; box-shadow: 0 10px 30px rgba(90,70,190,.12); }
+.chip b { width: 44px; height: 44px; border-radius: 50%; background: linear-gradient(135deg,#8B7CF6,#F49CC4); color: #fff; display: grid; place-items: center; font-size: 24px; letter-spacing: 0; }
+h1 { margin: 26px 0 0; font-size: 70px; line-height: 1.06; font-weight: 800; letter-spacing: -.02em; }
+h1 em { font-style: normal; background: linear-gradient(90deg,#6D5DE7,#D46BA3); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.sub { margin-top: 16px; font-size: 32px; line-height: 1.35; font-weight: 600; color: #5B5677; }
+#phone { position: absolute; left: 244px; top: 520px; width: 592px; height: 1244px; border-radius: 66px; background: #fff; padding: 16px; box-shadow: 0 40px 90px rgba(80,60,170,.25), 0 0 0 2px rgba(139,124,246,.15); }
+#screen { position: relative; width: 560px; height: 1212px; border-radius: 52px; overflow: hidden; background: #F4F1FF; }
+#screen img { position: absolute; left: 0; top: 0; width: 560px; height: 1212px; }
+.tap { position: absolute; width: 0; height: 0; }
+.tap i { position: absolute; left: -34px; top: -34px; width: 68px; height: 68px; border-radius: 50%; background: rgba(255,255,255,.75); border: 5px solid #8B7CF6; box-shadow: 0 8px 22px rgba(90,70,190,.35); }
+.tap u { position: absolute; left: -34px; top: -34px; width: 68px; height: 68px; border-radius: 50%; border: 4px solid #F49CC4; }
+.call { position: absolute; background: #fff; border-radius: 30px; padding: 22px 28px; box-shadow: 0 24px 60px rgba(80,60,170,.22); font-weight: 700; font-size: 30px; line-height: 1.3; max-width: 520px; transform-origin: center; }
+.call small { display: block; font-size: 22px; font-weight: 800; letter-spacing: .08em; color: #8C88A6; margin-bottom: 6px; }
+.call.lav { background: linear-gradient(135deg,#EFEBFF,#FFEAF3); }
+.call.mint { background: #E1F7EE; color: #1F7A59; }
+.call.peach { background: #FFF0E4; color: #A0561F; }
+.call.dark { background: #2A2547; color: #fff; }
+.call .em { font-size: 42px; margin-right: 10px; vertical-align: -4px; }
+#foot { position: absolute; left: 0; right: 0; bottom: 58px; display: flex; flex-direction: column; align-items: center; gap: 22px; }
+.dots { display: flex; gap: 12px; }
+.dots i { width: 14px; height: 14px; border-radius: 7px; background: #DDD6FA; transition: none; }
+.dots i.on { width: 46px; background: linear-gradient(90deg,#8B7CF6,#F49CC4); }
+.brand { display: flex; align-items: center; gap: 14px; font-weight: 800; font-size: 26px; color: #5E4FD8; }
+.brand img { width: 46px; height: 46px; border-radius: 14px; }
+#intro, #outro { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 0 80px; }
+#intro .icon, #outro .icon { width: 260px; height: 260px; border-radius: 74px; box-shadow: 0 40px 90px rgba(80,60,170,.3); }
+.big { font-size: 92px; line-height: 1.04; font-weight: 800; letter-spacing: -.03em; margin: 60px 0 0; }
+.feat { display: flex; gap: 18px; margin-top: 56px; flex-wrap: wrap; justify-content: center; }
+.feat span { background: #fff; border-radius: 26px; padding: 20px 28px; font-weight: 800; font-size: 32px; box-shadow: 0 14px 34px rgba(90,70,190,.13); }
+.trio { display: flex; gap: 26px; margin-top: 70px; }
+.trio div { width: 270px; background: #fff; border-radius: 40px; padding: 34px 10px 30px; box-shadow: 0 18px 40px rgba(90,70,190,.14); }
+.trio div b { display: block; font-size: 84px; }
+.trio div span { display: block; margin-top: 12px; font-size: 34px; font-weight: 800; }
+.url { margin-top: 60px; background: #2A2547; color: #fff; border-radius: 26px; padding: 22px 34px; font-weight: 700; font-size: 30px; }
+</style></head>
+<body><div id="stage">
+  <div class="blob" id="b1" style="width:760px;height:760px;background:#E2DAFF"></div>
+  <div class="blob" id="b2" style="width:640px;height:640px;background:#FFDCEA"></div>
+  <div class="blob" id="b3" style="width:700px;height:700px;background:#D3F3E6"></div>
+  <div id="head"><div class="chip" id="chip"><b id="chipn">1</b><span id="chipt">LANGKAH</span></div><h1 id="title"></h1><div class="sub" id="sub"></div></div>
+  <div id="phone"><div id="screen"></div></div>
+  <div id="calls"></div>
+  <div id="taps"></div>
+  <div id="foot"><div class="dots" id="dots"></div><div class="brand"><img src="ICON" alt="">HLEP DPR · SJ Chenderoh</div></div>
+  <div id="intro"><img class="icon" src="ICON" alt=""><div class="big">Cara guna<br><em style="font-style:normal;background:linear-gradient(90deg,#6D5DE7,#D46BA3);-webkit-background-clip:text;background-clip:text;color:transparent">HLEP DPR</em> web-app</div><div class="sub" style="font-size:38px;margin-top:26px">Laporan kerja harian elektrik · langkah demi langkah</div><div class="feat"><span>📷 Gambar</span><span>🤖 AI English</span><span>📶 Tanpa signal</span></div></div>
+  <div id="outro"><img class="icon" src="ICON" alt="" style="width:200px;height:200px;border-radius:58px"><div class="big" style="font-size:96px">Siap! 🎉</div><div class="sub" style="font-size:38px;margin-top:22px">Laporan harian dalam 3 langkah</div><div class="trio"><div><b>📷</b><span>Snap</span></div><div><b>👆</b><span>Pilih</span></div><div><b>🚀</b><span>Hantar</span></div></div><div class="url" id="url">URL</div><div class="sub" style="margin-top:30px">Ada soalan? Tanya engineer anda.</div></div>
+</div>
+<script>
+const SHOTS = window.SHOTS, TAPS = window.TAPS;
+const K = 560 / 390;                      // screenshot CSS px → screen px
+const PH = { x: 244 + 16, y: 520 + 16 }; // screen origin on the stage
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const ease = (x) => { x = clamp(x, 0, 1); return 1 - Math.pow(1 - x, 3); };
+const back = (x) => { x = clamp(x, 0, 1); const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); };
+const span = (t, a, d) => clamp((t - a) / d, 0, 1);
+
+// ---------------- the storyboard ----------------
+const STEPS = [
+  { t: 5,  n: 1, title: 'Buka app &amp; <em>log masuk</em>', sub: 'Pilih nama anda, masukkan PIN 4 nombor.' },
+  { t: 13, n: 2, title: 'Tekan butang <em>+</em>', sub: 'Untuk tambah aktiviti baru.' },
+  { t: 19, n: 3, title: 'Ambil atau <em>pilih gambar</em>', sub: 'Maksimum 9 gambar setiap aktiviti.' },
+  { t: 25, n: 4, title: 'Pilih <em>kawasan, sistem,<br>status &amp; syif</em>', sub: 'Tekan sahaja – tiada perlu taip.' },
+  { t: 32, n: 5, title: 'Tulis ringkas,<br><em>AI susun ayat</em>', sub: 'Boleh BM atau English. Ayat laporan keluar dalam English.' },
+  { t: 41, n: 6, title: 'Tekan <em>Simpan</em>', sub: 'Aktiviti terus masuk laporan Telegram, WhatsApp &amp; PDF.' },
+  { t: 47, n: 7, title: 'Tiada signal?<br><em>Tiada masalah.</em>', sub: 'Disimpan dalam telefon, dihantar sendiri bila ada signal.' },
+  { t: 55, n: 8, title: 'Ubah atau <em>padam</em>', sub: 'Tekan ✏️ pada aktiviti anda sendiri.' },
+  { t: 61, n: 9, title: 'Engineer:<br><em>WhatsApp &amp; PDF</em>', sub: 'Salin teks WhatsApp. Jana PDF – dihantar ke Telegram.' }
+];
+const END = 72, TOTAL = 80;
+const SCREENS = [ // [time, shot]
+  [5, 'login'], [10.2, 'pin'], [13, 'home'], [16.8, 'add-empty'], [21.6, 'add-photos'], [25, 'add-system'],
+  [32, 'add-filled'], [36.6, 'add-preview'], [43.4, 'home-saved'], [47, 'offline'], [51.6, 'online'],
+  [55, 'home-edit'], [57.6, 'edit'], [61, 'report-wa'], [64.6, 'pdf-headline'], [67.6, 'pdf-done']
+];
+const TAPS_AT = [ // [time, shot whose target is tapped]
+  [9.4, 'login'], [11.4, 'pin'], [15.9, 'home'], [20.6, 'add-empty'], [24.2, 'add-photos'], [29.4, 'add-system'],
+  [35.6, 'add-filled'], [42.6, 'add-preview'], [56.8, 'home-edit'], [63.6, 'report-wa'], [66.8, 'pdf-headline'], [70, 'pdf-done']
+];
+const CALLS = [ // [from, to, x, y, cls, html]
+  [6.2, 10.1, 60, 1380, 'dark', '<small>PILIH</small>👤 Nama anda'],
+  [10.6, 12.8, 600, 1320, 'lav', '<small>PIN</small>🔒 4 nombor dari engineer'],
+  [13.8, 16.6, 600, 820, 'mint', '<small>HARI INI</small>Semua aktiviti pasukan, ikut unit &amp; sistem'],
+  [21.8, 24.9, 60, 1200, 'lav', '<span class="em">🗜️</span>Gambar dikecilkan<br>automatik – jimat data'],
+  [26.0, 31.8, 600, 640, 'peach', '<small>STATUS</small>NS · IP · CP'],
+  [27.2, 31.8, 40, 1100, 'lav', '<small>SYIF</small>☀️ Siang · 🌙 Malam'],
+  [33.0, 36.4, 40, 1060, 'dark', '<small>ANDA TAIP</small>“uji IR kabel LV dan MV”'],
+  [37.2, 40.8, 560, 1180, 'mint', '<small>AI TULIS</small>“IR test for LV &amp; MV cables completed.”'],
+  [44.2, 46.8, 600, 900, 'mint', '<span class="em">✅</span>Masuk laporan'],
+  [48.0, 51.4, 600, 760, 'lav', '<span class="em">📱</span>Disimpan dalam telefon'],
+  [52.4, 54.8, 600, 760, 'mint', '<span class="em">📶</span>Dihantar automatik'],
+  [58.2, 60.8, 30, 1460, 'dark', '<small>JURUTEKNIK</small>Aktiviti sendiri<br><small style="margin-top:12px">ENGINEER</small>Semua aktiviti'],
+  [61.8, 64.4, 600, 1500, 'mint', '<span class="em">📋</span>Salin → tampal di WhatsApp'],
+  [65.2, 67.4, 40, 700, 'lav', '<small>TAJUK UTAMA</small>AI cadang, engineer sahkan'],
+  [68.2, 71.8, 600, 1080, 'mint', '<span class="em">📄</span>PDF dihantar ke Telegram']
+];
+
+// ---------------- build the DOM once ----------------
+const scr = document.getElementById('screen');
+const imgs = {};
+SCREENS.forEach(([, s]) => { if (imgs[s]) return; const im = new Image(); im.src = SHOTS[s]; im.style.opacity = 0; scr.appendChild(im); imgs[s] = im; });
+const callsEl = document.getElementById('calls');
+const callEls = CALLS.map((c) => { const d = document.createElement('div'); d.className = 'call ' + c[4]; d.innerHTML = c[5]; if (c[2] >= 500) { d.style.right = '40px'; } else { d.style.left = Math.max(c[2], 40) + 'px'; } d.style.top = c[3] + 'px'; callsEl.appendChild(d); return d; });
+const tapsEl = document.getElementById('taps');
+const tapEls = TAPS_AT.map(() => { const d = document.createElement('div'); d.className = 'tap'; d.innerHTML = '<u></u><i></i>'; tapsEl.appendChild(d); return d; });
+const dots = document.getElementById('dots');
+STEPS.forEach(() => dots.appendChild(document.createElement('i')));
+document.getElementById('url').textContent = window.URL_TEXT || '';
+const $ = (id) => document.getElementById(id);
+
+window.seek = function (t) {
+  // background drift
+  $('b1').style.transform = `translate(${-200 + 60 * Math.sin(t / 6)}px, ${-180 + 50 * Math.cos(t / 7)}px)`;
+  $('b2').style.transform = `translate(${620 + 50 * Math.cos(t / 5)}px, ${240 + 60 * Math.sin(t / 6)}px)`;
+  $('b3').style.transform = `translate(${80 + 70 * Math.sin(t / 8)}px, ${1380 + 40 * Math.cos(t / 5)}px)`;
+
+  // intro / outro
+  const inOut = t < 5 ? 1 - span(t, 4.3, 0.7) : 0;
+  $('intro').style.opacity = inOut;
+  $('intro').querySelector('.icon').style.transform = `scale(${0.4 + 0.6 * back(span(t, 0.1, 0.8))}) rotate(${(1 - ease(span(t, 0.1, 0.9))) * -12}deg)`;
+  $('intro').querySelector('.big').style.cssText = `opacity:${ease(span(t, 0.6, 0.6))};transform:translateY(${40 * (1 - ease(span(t, 0.6, 0.7)))}px)`;
+  $('intro').querySelector('.sub').style.opacity = ease(span(t, 1.2, 0.6));
+  [...$('intro').querySelectorAll('.feat span')].forEach((s, i) => { const k = back(span(t, 1.8 + i * 0.25, 0.5)); s.style.transform = `scale(${k})`; s.style.opacity = clamp(k, 0, 1); });
+  const out = span(t, END, 0.8);
+  $('outro').style.opacity = out;
+  $('outro').querySelector('.icon').style.transform = `scale(${0.5 + 0.5 * back(span(t, END + 0.2, 0.7))})`;
+  [...$('outro').querySelectorAll('.trio div')].forEach((s, i) => { const k = back(span(t, END + 1.0 + i * 0.3, 0.55)); s.style.transform = `scale(${k}) translateY(${8 * Math.sin((t - END) * 2 + i)}px)`; s.style.opacity = clamp(k, 0, 1); });
+  $('url').style.opacity = ease(span(t, END + 2.2, 0.6));
+
+  // phone + header visible during steps
+  const show = ease(span(t, 4.6, 0.9)) * (1 - ease(span(t, END - 0.6, 0.7)));
+  $('phone').style.opacity = show;
+  $('phone').style.transform = `translateY(${(1 - show) * 160}px) scale(${0.94 + 0.06 * show})`;
+  $('foot').style.opacity = t < 5 ? 0 : show;
+  let step = STEPS[0], si = 0;
+  STEPS.forEach((s, i) => { if (t >= s.t) { step = s; si = i; } });
+  const lt = t - step.t;
+  const hk = ease(span(lt, 0, 0.55));
+  $('head').style.opacity = show * hk;
+  $('head').style.transform = `translateY(${(1 - hk) * 30}px)`;
+  if ($('title').dataset.n !== String(step.n)) { $('title').innerHTML = step.title; $('sub').innerHTML = step.sub; $('chipn').textContent = step.n; $('chipt').textContent = step.n === 9 ? 'ENGINEER' : 'LANGKAH ' + step.n; $('title').dataset.n = step.n; }
+  [...dots.children].forEach((d, i) => d.className = i === si ? 'on' : '');
+
+  // screens: crossfade + slight slide
+  let cur = null, prev = null, ct = 0;
+  SCREENS.forEach(([st, s], i) => { if (t >= st) { prev = cur; cur = s; ct = st; } });
+  Object.keys(imgs).forEach((k) => { imgs[k].style.opacity = 0; imgs[k].style.transform = ''; });
+  if (cur) {
+    const k = ease(span(t, ct, 0.45));
+    imgs[cur].style.opacity = k;
+    imgs[cur].style.transform = `translateY(${(1 - k) * 40}px)`;
+    if (prev && prev !== cur && k < 1) { imgs[prev].style.opacity = 1 - k; }
+  }
+
+  // taps
+  TAPS_AT.forEach(([tt, s], i) => {
+    const el = tapEls[i]; const p = TAPS[s];
+    const a = span(t, tt - 0.5, 0.35), r = span(t, tt, 0.6), gone = span(t, tt + 0.45, 0.3);
+    if (!p || t < tt - 0.5 || t > tt + 0.8) { el.style.opacity = 0; return; }
+    el.style.left = (PH.x + p.x * K) + 'px'; el.style.top = (PH.y + p.y * K) + 'px';
+    el.style.opacity = (1 - gone) * show;
+    const press = t < tt ? 1 + 0.25 * (1 - ease(a)) : 0.86 + 0.14 * ease(r);
+    el.querySelector('i').style.transform = `scale(${press})`;
+    el.querySelector('i').style.opacity = ease(a);
+    el.querySelector('u').style.transform = `scale(${1 + 1.6 * ease(r)})`;
+    el.querySelector('u').style.opacity = t < tt ? 0 : 1 - ease(r);
+  });
+
+  // callouts
+  CALLS.forEach((c, i) => {
+    const el = callEls[i];
+    const a = back(span(t, c[0], 0.45)), z = ease(span(t, c[1] - 0.35, 0.35));
+    if (t < c[0] || t > c[1]) { el.style.opacity = 0; return; }
+    el.style.opacity = clamp(a, 0, 1) * (1 - z);
+    el.style.transform = `scale(${0.7 + 0.3 * a}) translateY(${6 * Math.sin((t - c[0]) * 2.2)}px)`;
+  });
+};
+window.seek(0);
+</script></body></html>
