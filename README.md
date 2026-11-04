@@ -14,11 +14,12 @@ It works alongside the Telegram "HLEP DPR Bot" and writes into the same Google S
 | | Technician | Engineer |
 |---|---|---|
 | Add an activity: up to 9 photos, unit, system, status, shift, short note. AI writes the English line | ✅ | ✅ |
-| See the day's list. Edit or delete their own lines (same rule as `/semak`) | own lines | all lines |
+| See the day's list. Edit any activity, add or delete its photos | ✅ | ✅ |
+| Delete a whole activity | own lines | all lines |
 | Duplicate warning after saving (same rule as the bot) | ✅ | ✅ |
-| Create a new system, weather, manpower | ✅ | ✅ |
+| Create a new system, weather, manpower, add and edit Bahan tiba | ✅ | ✅ |
 | Daily PDF (made by the bot, sent to their Telegram, also downloadable here) | ✅ if on Telegram | ✅ |
-| Approve the AI headline, weekly PDF, WhatsApp text, % progress, tomorrow's plan, material arrivals, PTW/PIC/time settings | – | ✅ |
+| Approve the AI headline, weekly PDF, WhatsApp text, % progress, tomorrow's plan, delete materials, PTW/PIC/time settings, PDF photo limit | – | ✅ |
 
 ## How it stays out of the bot's way
 
@@ -55,7 +56,7 @@ It works alongside the Telegram "HLEP DPR Bot" and writes into the same Google S
 
 ```bash
 npm install
-npm test           # builds WebApp.gs, then runs the web backend and the bot together (100 checks)
+npm test           # builds WebApp.gs, then runs the web backend and the bot together (113 checks)
 npm run dev        # local preview on http://localhost:8080 with a demo day (PIN 1234)
 ```
 

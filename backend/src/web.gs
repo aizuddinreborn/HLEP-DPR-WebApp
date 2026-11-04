@@ -17,7 +17,7 @@
 //  The bot's Code.gs is never changed. This project only adds rows the bot already understands
 //  (source = "web") and one tab of its own, "WebUsers".
 
-const WEB_VERSION = 'w1.1';
+const WEB_VERSION = 'w1.2';
 const WEB_TAB = 'WebUsers';
 const WEB_HEAD = ['user_id', 'name', 'role', 'new_pin', 'pin_set', 'active', 'last_login', 'added_at', 'note'];
 const WEB_TOKEN_DAYS = 30;
@@ -81,7 +81,10 @@ const WEB_ACTIONS = {
   progress: [true, true, function (u, b) { return apiProgress_(u, b); }],
   plan: [true, true, function (u, b) { return apiPlan_(u, b); }],
   planDel: [true, true, function (u, b) { return apiPlanDel_(b); }],
-  material: [true, true, function (u, b) { return apiMaterial_(u, b); }],
+  material: [true, false, function (u, b) { return apiMaterial_(u, b); }],
+  materialEdit: [true, false, function (u, b) { return apiMaterialEdit_(b); }],
+  photoAdd: [true, false, function (u, b) { return apiPhotoAdd_(b); }],
+  photoDel: [true, false, function (u, b) { return apiPhotoDel_(b); }],
   materialDel: [true, true, function (u, b) { return apiMaterialDel_(b); }],
   wa: [true, true, function (u, b) { return apiWa_(b); }],
   headline: [true, true, function (u, b) { return apiHeadline_(b); }],
@@ -356,7 +359,8 @@ function webEntryOut_(e, user) {
     status: e.status, shift: e.shift === 'N' ? 'N' : 'D', who: e.reporter, uid: String(e.user_id), at: e.received_at,
     text: e.activity_text, raw: e.raw_text, src: e.source,
     photos: String(e.photo_ids || '').split(',').map(function (x) { return x.trim(); }).filter(String),
-    edit: canEditEntry_(user, e)
+    edit: true,                       // w1.2: everyone may edit any activity (wording, status, shift, system, photos)
+    del: canEditEntry_(user, e)       // deleting a whole activity: own lines, or an engineer (as /semak)
   };
 }
 
@@ -549,6 +553,15 @@ function webDup_(u, entryId) {
   return { id: hit.entry_id, who: hit.reporter, at: whenShort_(hit.received_at), label: label(hit), text: hit.activity_text, photos: photoCount_(hit) };
 }
 
+/**
+ * w1.2 web-app rule: every technician and engineer may edit any activity. The bot's own updateEntry_
+ * allows "own line or engineer", so for edits we hand it the person as an editor. Deleting a whole
+ * activity still uses the person as they are (removeEntry_: own line or engineer).
+ */
+function webEditor_(u) {
+  return { user_id: u.user_id, name: u.name, role: 'eng', approved: 'Y' };
+}
+
 function apiUpdate_(u, b) {
   const f = {};
   if (b.text !== undefined) {
@@ -567,10 +580,71 @@ function apiUpdate_(u, b) {
     f.category_key = c.key; f.category = shortCat_(c); f.area = c.area;
   }
   if (!Object.keys(f).length) throw webErr_('Tiada perubahan.');
-  const r = updateEntry_(u, String(b.id || ''), f);
+  const r = updateEntry_(webEditor_(u), String(b.id || ''), f);
   if (!r.ok) throw webErr_(String(r.err).replace(/^[⚠️⛔\s]+/, ''));
   const e = activeEntry_(String(b.id));
   return { entry: e ? webEntryOut_(e, u) : null };
+}
+
+function webIds_(s) {
+  return String(s || '').split(',').map(function (x) { return x.trim(); }).filter(String);
+}
+
+/** Adds photos (already uploaded with "upload") to an existing activity. */
+function apiPhotoAdd_(b) {
+  const id = String(b.id || '');
+  const ids = (b.photos || []).map(String).filter(String);
+  if (!ids.length) throw webErr_('Tiada gambar.');
+  const cache = CacheService.getScriptCache();
+  const urls = ids.map(function (pid) {
+    const f = cache.get('upid_' + pid) ? DriveApp.getFileById(pid) : webPhotoFile_(pid);
+    if (!f) throw webErr_('Satu gambar tidak dijumpai. Cuba lagi.');
+    return f.getUrl();
+  });
+  let out = null;
+  withLock_(function () {
+    const e = activeEntry_(id);
+    if (!e) throw webErr_('Aktiviti ini sudah tiada.');
+    const cur = webIds_(e.photo_ids);
+    const links = String(e.photo_links || '').split(/\n/).filter(String);
+    const curLinks = links.length === cur.length ? links : cur.map(function (x) { return 'https://drive.google.com/file/d/' + x + '/view'; });
+    const addIds = [], addUrls = [];
+    ids.forEach(function (x, i) { if (cur.indexOf(x) < 0 && addIds.indexOf(x) < 0) { addIds.push(x); addUrls.push(urls[i]); } });
+    if (cur.length + addIds.length > MAX_PHOTOS) throw webErr_('Maksimum ' + MAX_PHOTOS + ' gambar setiap aktiviti (sekarang ' + cur.length + ').');
+    out = cur.concat(addIds);
+    setCell_('Entries', e._row, 'photo_ids', out.join(','));
+    setCell_('Entries', e._row, 'photo_links', curLinks.concat(addUrls).join('\n'));
+  });
+  return { photos: out };
+}
+
+/** Removes one photo from an activity; the file goes to the Drive trash unless another activity still uses it. */
+function apiPhotoDel_(b) {
+  const id = String(b.id || '');
+  const pid = String(b.photo || '');
+  let out = null;
+  let shared = false;
+  withLock_(function () {
+    const all = rows_('Entries');
+    const e = all.filter(function (x) { return x.entry_id === id && x.deleted !== 'Y' && x.deleted !== 'M'; })[0];
+    if (!e) throw webErr_('Aktiviti ini sudah tiada.');
+    const cur = webIds_(e.photo_ids);
+    const i = cur.indexOf(pid);
+    if (i < 0) throw webErr_('Gambar ini sudah tiada.');
+    const links = String(e.photo_links || '').split(/\n/).filter(String);
+    cur.splice(i, 1);
+    if (links.length === cur.length + 1) links.splice(i, 1);
+    setCell_('Entries', e._row, 'photo_ids', cur.join(','));
+    setCell_('Entries', e._row, 'photo_links', (links.length === cur.length ? links : cur.map(function (x) { return 'https://drive.google.com/file/d/' + x + '/view'; })).join('\n'));
+    shared = all.some(function (x) { return x.entry_id !== id && x.deleted !== 'Y' && webIds_(x.photo_ids).indexOf(pid) >= 0; });
+    out = cur;
+  });
+  let trashed = false;
+  if (!shared) {
+    const f = webPhotoFile_(pid);
+    if (f) { try { f.setTrashed(true); trashed = true; } catch (err) { logErr_('web photo trash', err); } }
+  }
+  return { photos: out, trashed: trashed };
 }
 
 function apiRemove_(u, b) {
@@ -655,6 +729,24 @@ function apiMaterial_(u, b) {
   if (!item) throw webErr_('Tulis nama bahan.');
   const date = webDate_(b.date);
   appendRow_('Materials', { area: c.area, category_key: c.key, item: item, arrived_date: date, added_by: u.name, added_at: nowStr_(), deleted: '' });
+  return { item: item, date: date };
+}
+
+/** Changes a material arrival (anyone, w1.2): system, item name, arrival date. */
+function apiMaterialEdit_(b) {
+  const c = webCheckCat_(b.area, b.cat);
+  if (!c.material_header) throw webErr_('Sistem ini tiada senarai bahan.');
+  const item = String(b.item || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+  if (!item) throw webErr_('Tulis nama bahan.');
+  const date = webDate_(b.date);
+  const ok = withLock_(function () {
+    const r = rows_('Materials').filter(function (x) { return x._row === Number(b.row); })[0];
+    if (!r || r.deleted === 'Y' || String(r.item) !== String(b.oldItem)) return false;
+    const f = { area: c.area, category_key: c.key, item: item, arrived_date: date };
+    Object.keys(f).forEach(function (k) { if (String(r[k]) !== String(f[k])) setCell_('Materials', r._row, k, f[k]); });
+    return true;
+  });
+  if (!ok) throw webErr_('Bahan tidak dijumpai (mungkin baru diubah orang lain). Muat semula.');
   return { item: item, date: date };
 }
 

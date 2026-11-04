@@ -111,10 +111,11 @@ let day = api('day', { t: T, date: '10/10/2026' });
 ok(day.ok && day.entries.length === 2 && day.day === 'Sabtu', 'both entries (web + Telegram), day name in BM');
 const mine = day.entries.find((e) => e.src === 'web');
 const engs = day.entries.find((e) => e.src !== 'web');
-ok(mine.edit && !engs.edit && mine.photos.length === 2, 'technician may edit only his own line (as /semak)');
+ok(mine.edit && engs.edit && mine.del && !engs.del && mine.photos.length === 2, 'w1.2: technician may edit every line, but delete only his own');
 ok(api('day', { t: E, date: '10/10/2026' }).entries.every((e) => e.edit), 'engineer may edit all');
-r = api('update', { t: T, id: engs.id, text: 'Hacked.' });
-ok(!r.ok && /sendiri/.test(r.err), 'technician cannot change the engineer\'s line');
+r = api('update', { t: T, id: engs.id, text: 'battery racks installed inside the battery room' });
+ok(r.ok && r.entry.text === 'Battery racks installed inside the battery room.' && rows('Entries').find((e) => e.entry_id === engs.id).user_id === '111', 'w1.2: technician edits the engineer\'s line (owner unchanged)');
+api('update', { t: E, id: engs.id, text: engs.text });
 r = api('update', { t: T, id: mine.id, status: 'CP', text: 'cable pulling of 3C cable completed' });
 ok(r.ok && r.entry.status === 'CP' && r.entry.text === 'Cable pulling of 3C cable completed.', 'own line: status + wording changed (cleaned like the bot)');
 r = api('update', { t: E, id: mine.id, cat: 'U1_GEN' });
@@ -248,6 +249,48 @@ ok(m2.pdfPhotos === 5 && m2.maxPhotos === 20, 'app told: PDF shows 5, an activit
 const many = Array.from({ length: 7 }, () => api('upload', { t: T2, cid: cid(), date: '10/10/2026', mime: 'image/jpeg', b64: JPG }).id);
 sv = api('save', { t: T2, cid: cid(), date: '10/10/2026', area: 'U1', cat: 'U1_GEN', status: 'IP', shift: 'D', text: 'Stator inspection with 7 photos.', photos: many });
 ok(sv.ok && api('day', { t: T2, date: '10/10/2026' }).entries.find((e) => e.id === sv.id).photos.length === 7, 'an activity keeps all 7 photos (no app-side cap below the bot\'s 20)');
+
+section('w1.2 · photos on existing activities (everyone)');
+{
+  const T3 = api('login', { id: '222', pin: '1234' }).token;
+  const engE = api('day', { t: T3, date: '10/10/2026' }).entries.find((e) => e.uid === '111' && e.src !== 'web');
+  const n0 = engE.photos.length;
+  const up = [1, 2].map(() => api('upload', { t: T3, cid: cid(), date: '10/10/2026', mime: 'image/jpeg', b64: JPG }).id);
+  let pr = api('photoAdd', { t: T3, id: engE.id, photos: up.concat([up[0]]) });
+  let erow = rows('Entries').find((e) => e.entry_id === engE.id);
+  ok(pr.ok && pr.photos.length === n0 + 2 && erow.photo_ids.split(',').length === n0 + 2 && erow.photo_links.split('\n').filter(Boolean).length === n0 + 2, 'technician adds 2 photos to the engineer\'s activity (ids + links stay in step, no double)');
+  ok(!api('photoAdd', { t: T3, id: engE.id, photos: [env.props.REPORT_FOLDER_ID] }).ok, 'a file outside Photos cannot be added');
+  const big = Array.from({ length: 19 }, () => api('upload', { t: T3, cid: cid(), date: '10/10/2026', mime: 'image/jpeg', b64: JPG }).id);
+  ok(!api('photoAdd', { t: T3, id: engE.id, photos: big }).ok, 'no more than 20 photos per activity');
+  pr = api('photoDel', { t: T3, id: engE.id, photo: up[0] });
+  erow = rows('Entries').find((e) => e.entry_id === engE.id);
+  ok(pr.ok && pr.trashed && env.files[up[0]]._trashed && erow.photo_ids.split(',').indexOf(up[0]) < 0 && erow.photo_links.split('\n').filter(Boolean).length === erow.photo_ids.split(',').filter(Boolean).length, 'photo deleted: gone from the row, file in Drive trash');
+  ok(!api('photoDel', { t: T3, id: engE.id, photo: up[0] }).ok, 'deleting it again → "sudah tiada"');
+  // a photo shared with another activity stays in Drive
+  const other = api('save', { t: E, cid: cid(), date: '10/10/2026', area: 'U1', cat: 'U1_GEN', status: 'IP', shift: 'D', text: 'Shared photo check.', photos: [up[1]] });
+  pr = api('photoDel', { t: T3, id: engE.id, photo: up[1] });
+  ok(pr.ok && !pr.trashed && !env.files[up[1]]._trashed, 'photo also used by another activity → removed here, file kept');
+  W.say('111', '/semak 10/10/2026');
+  ok(/Shared photo check/.test(strip(W.last('111').text)), 'bot /semak still reads the rows after photo edits');
+  api('remove', { t: E, id: other.id });
+}
+
+section('w1.2 · Bahan tiba: everyone adds and edits, engineer deletes');
+{
+  const T3 = api('login', { id: '222', pin: '1234' }).token;
+  r = api('material', { t: T3, area: 'U1', cat: 'U1_EPS', item: 'Cable ladder 300mm', date: '10/10/2026' });
+  ok(r.ok && rows('Materials').some((m) => m.item === 'Cable ladder 300mm' && m.added_by === 'Ali Firdaus'), 'technician adds a material arrival');
+  const mat = api('day', { t: T3, date: '10/10/2026' }).materials.find((m) => m.item === 'Cable ladder 300mm');
+  r = api('materialEdit', { t: T3, row: mat.row, oldItem: mat.item, area: 'U1', cat: 'U1_GEN', item: 'Cable ladder 300 mm (galvanised)', date: '09/10/2026' });
+  const mrow = rows('Materials').find((m) => m.item === 'Cable ladder 300 mm (galvanised)');
+  ok(r.ok && mrow && mrow.category_key === 'U1_GEN' && mrow.arrived_date === '2026-10-09', 'technician edits it: system, name, date');
+  ok(!api('materialEdit', { t: T3, row: mat.row, oldItem: 'Cable ladder 300mm', area: 'U1', cat: 'U1_GEN', item: 'x', date: '09/10/2026' }).ok, 'edit with an old name (changed by someone else) refused');
+  ok(!api('materialEdit', { t: T3, row: mat.row, oldItem: mrow.item, area: 'U1', cat: 'U1_FIRE', item: 'x', date: '09/10/2026' }).ok, 'only systems with a material list');
+  ok(api('materialDel', { t: T3, row: mat.row, item: mrow.item }).code === 'eng', 'technician cannot delete a material');
+  W.say('111', '/today 10/10/2026');
+  W.tap('111', 'go:2026-10-10');
+  ok(W.msgsTo('111').filter((m) => /^<pre>/.test(m.text)).slice(-2).some((m) => /Cable ladder 300 mm \(galvanised\) ✅ (- )?9\/10\/26/.test(strip(m.text))), 'bot WhatsApp text shows the edited material');
+}
 
 section('Clean run');
 ok(!rows('Log').some((l) => l.level === 'ERROR'), 'no ERROR rows in the Log tab');

@@ -1,4 +1,4 @@
-# HLEP DPR Web-app – session handoff (as of w1.1, 05/11/2026)
+# HLEP DPR Web-app – session handoff (as of w1.2, 05/11/2026)
 
 Build session: https://claude.ai/code/session_013Z1t4uvdrdQSVrZNFCMGRj
 Repo: https://github.com/aizuddinreborn/hlep-dpr-webapp (public) · App: https://aizuddinreborn.github.io/HLEP-DPR-WebApp/ (Pages publishes the `main` branch root; the root `index.html` redirects to `app/`, so the app's real address is …/HLEP-DPR-WebApp/app/. Do not add a GitHub Actions Pages workflow: two deployments race and the one that finishes last wins, which caused a 404 on /app/.)
@@ -6,12 +6,12 @@ Repo: https://github.com/aizuddinreborn/hlep-dpr-webapp (public) · App: https:/
 ## Prompt to start the next session
 
 ```
-Continue building my "HLEP DPR Web-app" (pastel mobile PWA on GitHub Pages + its own Apps Script backend), which works alongside my Telegram "HLEP DPR Bot". The web-app is w1.1; the bot is v1.4 and must never be changed by web-app work.
+Continue building my "HLEP DPR Web-app" (pastel mobile PWA on GitHub Pages + its own Apps Script backend), which works alongside my Telegram "HLEP DPR Bot". The web-app is w1.2; the bot is v1.4 and must never be changed by web-app work.
 
 Before anything else:
 1. Attach the repo aizuddinreborn/hlep-dpr-webapp and read docs/HANDOFF.md and README.md.
 2. Read these Project docs: "claude/HLEP DPR Bot v1.4 - Code.gs" (save it to /home/claude/hlep-dpr-bot/Code.gs) and "claude/HLEP DPR Bot - dev harness bundle.txt" (unpack it as the bot handoff explains).
-3. Run `npm install && npm test` in the repo. It should end with "All 100 web checks passed".
+3. Run `npm install && npm test` in the repo. It should end with "All 113 web checks passed".
 
 How I work with you:
 - Interview me first. Ask about the goal, any missing context and the output format before building.
@@ -43,10 +43,13 @@ My next request: <write it here>
   - `media_group = web:<client id>` makes saves idempotent, so an offline re-send is never saved twice.
   - `backdated = Y` when the date is in the past.
   - Photo file names follow the bot's pattern, saved in `Photos/yyyy-mm/yyyy-mm-dd`.
-- **Permissions match the bot:**
-  - Technicians edit and delete their own lines; engineers edit all.
+- **Permissions (w1.2, decided by the user):**
+  - Every technician and engineer may edit ANY activity: wording, status, shift, system, and add or delete its photos.
+  - Deleting a whole activity: own lines, or an engineer (as /semak). Telegram /semak keeps the bot's own rule, because the bot is unchanged.
+  - Photo delete: the file goes to the Drive trash unless another activity still uses it (merged rows share photo ids).
   - Anyone can create a new system, set the weather or update manpower.
-  - Engineer only: %, plans, materials, WhatsApp text, weekly PDF, headline and settings.
+  - Bahan tiba: everyone adds and edits; deleting a material is engineer only.
+  - Engineer only: %, plans, WhatsApp text, weekly PDF, headline and settings.
 - **PDF:**
   - The backend posts `/report dd/mm/yyyy` (or `/weekly`) to the bot's webhook. It uses `BOT_WEBAPP_URL` + `BOT_WEBHOOK_SECRET`, and the `update_id` is the string `web…`.
   - The bot builds the PDF and sends it to that person's Telegram. The app then polls `ReportLog` and downloads the file through the backend.
@@ -71,7 +74,7 @@ My next request: <write it here>
 2. Put the bot's Code.gs at `/home/claude/hlep-dpr-bot/Code.gs`, or set `BOT_CODE`.
 3. Unpack the bot's harness bundle and set `HARNESS=<root>/harness`. The default path in `backend/test/world.js` is the build session's scratchpad.
    - The bot's own `run.js` needs three old-version files (`Code_v0.1.gs`, `Code_v0.4.gs`, `Code_v0.6.1.gs`) that are not in the bundle. Wrap those three upgrade tests in an `fs.existsSync` skip; the other 531 checks pass.
-4. `npm test` runs 100 web checks.
+4. `npm test` runs 113 web checks.
 5. `npm run dev` starts a preview on :8080 with a demo day. Every demo user's PIN is 1234.
    - `node tools/shots.js` walks the whole UI (phone) and reports console errors.
    - `node tools/laptop.js` takes laptop screenshots.

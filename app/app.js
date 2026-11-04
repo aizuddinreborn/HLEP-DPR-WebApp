@@ -4,7 +4,7 @@
 (function () {
   'use strict';
 
-  const APP_VERSION = '1.1.0';
+  const APP_VERSION = '1.2.0';
   const TZ = 'Asia/Kuala_Lumpur';
   const PHOTO_EDGE = 1600;        // longest side after shrinking on the phone
   const PHOTO_Q = 0.82;
@@ -200,9 +200,10 @@
     L.el.classList.add('closing');
     setTimeout(() => L.el.remove(), 220);
     if (L.onClose) L.onClose();
-    if (!fromPop) history.back();
+    if (!fromPop) { skipPop++; history.back(); }
   }
-  window.addEventListener('popstate', () => { if (layers.length) closeLayer(true); });
+  let skipPop = 0;      // our own history.back() must not close the layer underneath as well
+  window.addEventListener('popstate', () => { if (skipPop > 0) { skipPop--; return; } if (layers.length) closeLayer(true); });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && layers.length) closeLayer(); });
 
   function confirmBox(title, text, yes, kind) {
@@ -729,13 +730,45 @@
     if (!e) return;
     const st = { text: e.text, status: e.status, shift: e.shift, cat: e.cat, area: e.area };
     const L = openLayer('<div id="edb"></div>', { title: 'Ubah aktiviti', full: true,
-      foot: '<div class="btn-row"><button class="btn danger" data-del style="flex:0 0 auto">' + ic('trash', 's') + '</button><button class="btn primary" data-save>' + ic('check', 's') + ' Simpan perubahan</button></div>' });
+      foot: '<div class="btn-row">' + (e.del ? '<button class="btn danger" data-del style="flex:0 0 auto" aria-label="Padam aktiviti">' + ic('trash', 's') + '</button>' : '') + '<button class="btn primary" data-save>' + ic('check', 's') + ' Simpan perubahan</button></div>' });
     const body = $('#edb', L.el);
+    const pending = [];                 // photos being shrunk / uploaded: { cid, thumb }
+    let photoChanged = false;
+    const file = document.createElement('input');
+    file.type = 'file'; file.accept = 'image/*'; file.multiple = true; file.hidden = true;
+    L.el.appendChild(file);
+    file.onchange = async () => {
+      const files = Array.from(file.files || []);
+      file.value = '';
+      if (!navigator.onLine) return toast('Perlu internet untuk tambah gambar pada aktiviti sedia ada.', 'bad');
+      const room = maxPhotos() - e.photos.length - pending.length;
+      if (files.length > room) toast('Maksimum ' + maxPhotos() + ' gambar setiap aktiviti.', 'bad');
+      const ids = [];
+      for (const f of files.slice(0, Math.max(0, room))) {
+        const tmp = { cid: uid(), thumb: '' };
+        pending.push(tmp); draw();
+        try {
+          const sh = await shrink(f);
+          tmp.thumb = sh.thumb; draw();
+          const r = await api('upload', { cid: tmp.cid, date: dmy(e.date), mime: 'image/jpeg', b64: await blobToB64(sh.blob), taken: sh.taken }, { timeout: 90000 });
+          S.thumbs.set(r.id, sh.thumb); idb.put('thumbs', sh.thumb, r.id).catch(() => {});
+          ids.push(r.id);
+        } catch (err) { toast(err.message, 'bad'); }
+        pending.splice(pending.indexOf(tmp), 1);
+      }
+      if (ids.length) {
+        try { const r = await api('photoAdd', { id: e.id, photos: ids }); e.photos = r.photos; photoChanged = true; toast(ids.length + ' gambar ditambah ✓', 'ok'); }
+        catch (err) { toast(err.message, 'bad'); }
+      }
+      draw();
+    };
     const pressed = (b) => ' aria-pressed="' + (b ? 'true' : 'false') + '"';
     const draw = () => {
       const cats = S.meta.cats.filter((c) => c.area === st.area);
       body.innerHTML = '<div class="card" style="margin-top:4px"><div class="by" style="margin:0;color:var(--ink-3);font-weight:600;font-size:12.5px">' + ic('user', 'xs') + ' ' + esc(e.who) + ' · ' + esc(dmy(e.date)) + ' ' + esc(hhmm(e.at)) + (e.photos.length ? ' · 📷 ' + e.photos.length : '') + '</div>' +
-        (e.photos.length ? '<div class="strip" data-ph>' + e.photos.map((id) => '<span class="ph"><img data-thumb="' + esc(id) + '" src="' + (S.thumbs.get(id) || '') + '" alt=""></span>').join('') + '</div>' : '') + '</div>' +
+        '<div class="photos noanim" style="margin-top:10px">' + e.photos.map((id, i) => '<div class="ph" data-vi="' + i + '"><img data-thumb="' + esc(id) + '" src="' + (S.thumbs.get(id) || '') + '" alt="Gambar ' + (i + 1) + '"><button class="rm" data-prm="' + esc(id) + '" aria-label="Padam gambar">' + ic('x', 's') + '</button></div>').join('') +
+        pending.map((p) => '<div class="ph">' + (p.thumb ? '<img src="' + p.thumb + '" alt="">' : '') + '<div class="busy"><span class="spin"></span></div></div>').join('') +
+        (e.photos.length + pending.length < maxPhotos() ? '<button class="add" data-padd>' + ic('camera') + '<span>Tambah</span></button>' : '') + '</div>' + '</div>' +
         '<div class="field"><label for="et">Ayat laporan (English)</label><textarea class="input" id="et">' + esc(st.text) + '</textarea></div>' +
         '<div class="field"><div class="lbl">Status</div><div class="seg three">' + [['NS', 'flag', 'Belum mula'], ['IP', 'clock', 'Sedang dibuat'], ['CP', 'check', 'Siap']].map((s) => '<button class="opt-card st-' + s[0] + '" data-st="' + s[0] + '"' + pressed(st.status === s[0]) + '><span class="ic">' + ic(s[1], 's') + '</span><span>' + s[0] + '<small>' + s[2] + '</small></span></button>').join('') + '</div></div>' +
         '<div class="field"><div class="lbl">Syif</div><div class="seg"><button class="opt-card sh-D" data-sh="D"' + pressed(st.shift === 'D') + '><span class="ic">' + ic('sun', 's') + '</span>Siang</button><button class="opt-card sh-N" data-sh="N"' + pressed(st.shift === 'N') + '><span class="ic">' + ic('moon', 's') + '</span>Malam</button></div></div>' +
@@ -745,7 +778,17 @@
       $$('[data-sh]', body).forEach((b) => { b.onclick = () => { keep(); st.shift = b.dataset.sh; draw(); }; });
       $$('[data-cat]', body).forEach((b) => { b.onclick = () => { keep(); st.cat = b.dataset.cat; draw(); }; });
       $('[data-flip]', body).onclick = () => { keep(); st.area = st.area === 'U1' ? 'U4' : 'U1'; draw(); };
-      const ph = $('[data-ph]', body); if (ph) ph.onclick = (ev) => viewer(e.photos, Math.max(0, $$('.ph', ph).indexOf(ev.target.closest('.ph'))));
+      $$('[data-vi]', body).forEach((el) => { el.onclick = (ev) => { if (ev.target.closest('[data-prm]')) return; viewer(e.photos, Number(el.dataset.vi)); }; });
+      const pa = $('[data-padd]', body); if (pa) pa.onclick = () => { keep(); file.click(); };
+      $$('[data-prm]', body).forEach((b) => {
+        b.onclick = async (ev) => {
+          ev.stopPropagation(); keep();
+          const pid = b.dataset.prm;
+          if (!(await confirmBox('Padam gambar ini?', '<img src="' + (S.thumbs.get(pid) || '') + '" alt="" style="width:100%;height:180px;object-fit:cover;border-radius:14px;display:block;margin-bottom:8px"><br>Gambar masuk Trash Google Drive (boleh dipulihkan dalam 30 hari).', 'Ya, padam', 'danger'))) return;
+          try { const r = await api('photoDel', { id: e.id, photo: pid }); e.photos = r.photos; photoChanged = true; toast('Gambar dipadam.', 'ok'); draw(); }
+          catch (err) { toast(err.message, 'bad'); }
+        };
+      });
     };
     draw();
     loadThumbs(e.photos);
@@ -756,12 +799,15 @@
       if (st.status !== e.status) ch.status = st.status;
       if (st.shift !== e.shift) ch.shift = st.shift;
       if (st.cat !== e.cat) { if (!catOf(st.cat) || catOf(st.cat).area !== st.area) return toast('Pilih sistem.', 'bad'); ch.cat = st.cat; }
-      if (!Object.keys(ch).length) return closeLayer();
+      if (pending.length) return toast('Tunggu gambar siap dimuat naik.', 'bad');
+      if (!Object.keys(ch).length) { closeLayer(); if (photoChanged) { await loadDay(S.date, true); render(); } return; }
       busy(btn, true);
       try { await api('update', Object.assign({ id: e.id }, ch)); toast('Dikemas kini ✓', 'ok'); closeLayer(); await loadDay(S.date, true); render(); }
       catch (err) { busy(btn, false); toast(err.message, 'bad'); }
     };
-    $('[data-del]', L.el).onclick = async () => {
+    L.onClose = () => { if (photoChanged) loadDay(S.date, true).then(render); };
+    const delBtn = $('[data-del]', L.el);
+    if (delBtn) delBtn.onclick = async () => {
       const own = e.src !== 'merged' && e.src !== 'contractor';
       const yes = await confirmBox('Padam aktiviti ini?', '<b>' + esc(e.text) + '</b>' + (e.photos.length && own ? '<br><br>📷 ' + e.photos.length + ' gambarnya juga dipadam dari Google Drive (masuk Trash, boleh dipulihkan dalam 30 hari).' : '') + (e.src === 'merged' ? '<br><br>🔀 Baris asal sebelum digabung akan muncul semula.' : ''), 'Ya, padam', 'danger');
       if (!yes) return;
@@ -803,9 +849,9 @@
         : '<p class="muted">Tiada rancangan. PDF guna aktiviti sebenar esok; jika tiada, rancangan ini; jika tiada, TBA.</p>') +
       (eng ? '<button class="btn soft block" style="margin-top:12px" data-plan>' + ic('plus', 's') + ' Tambah rancangan</button>' : '') + '</div>';
     h += '<div class="section-t"><h2>Bahan tiba</h2><span>' + d.materials.length + '</span></div><div class="card">' +
-      (d.materials.length ? d.materials.slice(0, 12).map((m) => '<div class="list-row"><span class="ic" style="background:var(--mint-50);color:var(--mint)">' + ic('box', 's') + '</span><div class="grow"><div class="t">' + esc(m.item) + '</div><div class="s">' + esc(m.label + ' · ✅ ' + dmy(m.date)) + '</div></div>' + (eng ? '<button class="iconbtn" style="width:40px;height:40px;box-shadow:none;background:var(--rose-50);color:var(--rose)" data-mdel="' + m.row + '" aria-label="Padam">' + ic('trash', 's') + '</button>' : '') + '</div>').join('') : '<p class="muted">Tiada.</p>') +
-      (eng ? '<button class="btn soft block" style="margin-top:12px" data-mat>' + ic('plus', 's') + ' Bahan tiba</button>' : '') + '</div>';
-    if (!eng) h += '<p class="hint" style="margin-top:14px">Peratus, rancangan dan bahan dikemas kini oleh engineer.</p>';
+      (d.materials.length ? d.materials.map((m) => '<div class="list-row"><button class="row grow" style="text-align:left;gap:12px" data-medit="' + m.row + '"><span class="ic" style="background:var(--mint-50);color:var(--mint)">' + ic('box', 's') + '</span><span class="grow"><span class="t" style="display:block">' + esc(m.item) + '</span><span class="s">' + esc(m.label + ' · ✅ ' + dmy(m.date)) + '</span></span>' + ic('edit', 's') + '</button>' + (eng ? '<button class="iconbtn" style="width:40px;height:40px;box-shadow:none;background:var(--rose-50);color:var(--rose)" data-mdel="' + m.row + '" aria-label="Padam">' + ic('trash', 's') + '</button>' : '') + '</div>').join('') : '<p class="muted">Tiada.</p>') +
+      '<button class="btn soft block" style="margin-top:12px" data-mat>' + ic('plus', 's') + ' Bahan tiba</button></div>';
+    if (!eng) h += '<p class="hint" style="margin-top:14px">Peratus dan rancangan dikemas kini oleh engineer.</p>';
     h += '</div></div>';
     return h;
   }
@@ -817,6 +863,7 @@
     $$('[data-pct]').forEach((b) => { b.onclick = () => pctSheet(d.progress.find((p) => p.key === b.dataset.pct)); });
     const pl = $('[data-plan]'); if (pl) pl.onclick = () => planSheet();
     const mt = $('[data-mat]'); if (mt) mt.onclick = () => matSheet();
+    $$('[data-medit]').forEach((b) => { b.onclick = () => matSheet(d.materials.find((x) => String(x.row) === b.dataset.medit)); });
     $$('[data-pdel]').forEach((b) => { b.onclick = async () => { const p = d.plans.find((x) => String(x.row) === b.dataset.pdel); if (!(await confirmBox('Padam rancangan?', esc(p.text), 'Padam', 'danger'))) return; try { await api('planDel', { row: p.row, text: p.text }); await loadDay(S.date, true); render(); } catch (e) { toast(e.message, 'bad'); } }; });
     $$('[data-mdel]').forEach((b) => { b.onclick = async () => { const m = d.materials.find((x) => String(x.row) === b.dataset.mdel); if (!(await confirmBox('Padam bahan?', esc(m.item), 'Padam', 'danger'))) return; try { await api('materialDel', { row: m.row, item: m.item }); await loadDay(S.date, true); render(); } catch (e) { toast(e.message, 'bad'); } }; });
   };
@@ -894,9 +941,9 @@
     };
   }
 
-  function matSheet() {
-    const st = { area: '', cat: '', item: '', date: today() };
-    const L = openLayer('<div id="mtb"></div>', { title: 'Bahan tiba', full: true, foot: '<button class="btn primary block" data-ok>' + ic('check', 's') + ' Simpan</button>' });
+  function matSheet(m) {
+    const st = m ? { area: (catOf(m.cat) || {}).area || m.area, cat: m.cat, item: m.item, date: m.date } : { area: '', cat: '', item: '', date: today() };
+    const L = openLayer('<div id="mtb"></div>', { title: m ? 'Ubah bahan' : 'Bahan tiba', full: true, foot: '<button class="btn primary block" data-ok>' + ic('check', 's') + (m ? ' Simpan perubahan' : ' Simpan') + '</button>' });
     const body = $('#mtb', L.el);
     const draw = () => {
       body.innerHTML = catPicker(st, (c) => c.mat) + (st.cat ? '<div class="field"><label for="mti">Nama bahan</label><input class="input" id="mti" value="' + esc(st.item) + '" placeholder="cth: 500kVA SST 1 & 2"></div>' +
@@ -913,7 +960,11 @@
       if (!st.cat) return toast('Pilih kawasan dan sistem.', 'bad');
       if (!st.item) return toast('Tulis nama bahan.', 'bad');
       busy(btn, true);
-      try { await api('material', { area: st.area, cat: st.cat, item: st.item, date: dmy(st.date) }); toast('Bahan disimpan ✓', 'ok'); closeLayer(); await loadDay(S.date, true); render(); }
+      try {
+        if (m) await api('materialEdit', { row: m.row, oldItem: m.item, area: st.area, cat: st.cat, item: st.item, date: dmy(st.date) });
+        else await api('material', { area: st.area, cat: st.cat, item: st.item, date: dmy(st.date) });
+        toast(m ? 'Bahan dikemas kini ✓' : 'Bahan disimpan ✓', 'ok'); closeLayer(); await loadDay(S.date, true); render();
+      }
       catch (err) { busy(btn, false); toast(err.message, 'bad'); }
     };
   }
