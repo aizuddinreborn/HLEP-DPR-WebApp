@@ -1,0 +1,4 @@
+node_modules/
+backend/dist/
+tools/.cache/
+*.log

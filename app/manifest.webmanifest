@@ -1,0 +1,17 @@
+{
+  "name": "HLEP DPR – Laporan Harian",
+  "short_name": "HLEP DPR",
+  "description": "Laporan kerja harian elektrik HLEP – SJ Chenderoh",
+  "lang": "ms",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F4F1FF",
+  "theme_color": "#F4F1FF",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
