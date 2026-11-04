@@ -1,4 +1,4 @@
-# HLEP DPR Web-app – session handoff (as of w1.0, 05/11/2026)
+# HLEP DPR Web-app – session handoff (as of w1.1, 05/11/2026)
 
 Build session: https://claude.ai/code/session_013Z1t4uvdrdQSVrZNFCMGRj
 Repo: https://github.com/aizuddinreborn/hlep-dpr-webapp (public) · App: https://aizuddinreborn.github.io/HLEP-DPR-WebApp/ (Pages publishes the `main` branch root; the root `index.html` redirects to `app/`, so the app's real address is …/HLEP-DPR-WebApp/app/. The Actions workflow in `.github/workflows/pages.yml` is only used if Pages → Source is switched to GitHub Actions.)
@@ -6,12 +6,12 @@ Repo: https://github.com/aizuddinreborn/hlep-dpr-webapp (public) · App: https:/
 ## Prompt to start the next session
 
 ```
-Continue building my "HLEP DPR Web-app" (pastel mobile PWA on GitHub Pages + its own Apps Script backend), which works alongside my Telegram "HLEP DPR Bot". The web-app is w1.0; the bot is v1.4 and must never be changed by web-app work.
+Continue building my "HLEP DPR Web-app" (pastel mobile PWA on GitHub Pages + its own Apps Script backend), which works alongside my Telegram "HLEP DPR Bot". The web-app is w1.1; the bot is v1.4 and must never be changed by web-app work.
 
 Before anything else:
 1. Attach the repo aizuddinreborn/hlep-dpr-webapp and read docs/HANDOFF.md and README.md.
 2. Read these Project docs: "claude/HLEP DPR Bot v1.4 - Code.gs" (save it to /home/claude/hlep-dpr-bot/Code.gs) and "claude/HLEP DPR Bot - dev harness bundle.txt" (unpack it as the bot handoff explains).
-3. Run `npm install && npm test` in the repo. It should end with "All 93 web checks passed".
+3. Run `npm install && npm test` in the repo. It should end with "All 100 web checks passed".
 
 How I work with you:
 - Interview me first. Ask about the goal, any missing context and the output format before building.
@@ -59,7 +59,9 @@ My next request: <write it here>
   - Sessions are `wt_<token>` properties: 30 days, sliding. They end when the PIN changes or `active = N`.
   - 5 wrong PINs lock that person out for 15 minutes.
 - **Photos:**
-  - Shrunk on the phone to a 1600 px longest side, JPEG at 0.82 quality, at most 9 per activity.
+  - Shrunk on the phone to a 1600 px longest side, JPEG at 0.82 quality.
+  - An activity may hold up to 20 photos (the bot's MAX_PHOTOS), and the app shows them all (w1.1).
+  - Only the PDF is limited: the bot's `PHOTOS_PER_ACTIVITY` setting (0–9). Engineers change it in Saya → Tetapan laporan → 📷 Had gambar dalam PDF. The bot picks up the change within 5 minutes (settings cache).
   - Thumbnails only for files inside the bot's Photos folder.
 - **Offline:** IndexedDB outbox. Each photo is uploaded on its own, then the entry is saved. Duplicate questions are shown when the sync finishes.
 
@@ -69,7 +71,7 @@ My next request: <write it here>
 2. Put the bot's Code.gs at `/home/claude/hlep-dpr-bot/Code.gs`, or set `BOT_CODE`.
 3. Unpack the bot's harness bundle and set `HARNESS=<root>/harness`. The default path in `backend/test/world.js` is the build session's scratchpad.
    - The bot's own `run.js` needs three old-version files (`Code_v0.1.gs`, `Code_v0.4.gs`, `Code_v0.6.1.gs`) that are not in the bundle. Wrap those three upgrade tests in an `fs.existsSync` skip; the other 531 checks pass.
-4. `npm test` runs 93 web checks.
+4. `npm test` runs 100 web checks.
 5. `npm run dev` starts a preview on :8080 with a demo day. Every demo user's PIN is 1234.
    - `node tools/shots.js` walks the whole UI (phone) and reports console errors.
    - `node tools/laptop.js` takes laptop screenshots.

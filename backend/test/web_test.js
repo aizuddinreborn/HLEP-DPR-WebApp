@@ -233,6 +233,22 @@ r = api('settingSet', { t: E, key: 'PTW_U1', value: '1. U1 Electrical (HV) - 22/
 ok(r.ok && rows('Settings').find((s) => s.key === 'PTW_U1').value === '1. U1 Electrical (HV) - 22/07/2026 until 30/11/2026' && rows('PtwLog').some((p) => /30\/11\/2026/.test(p.value)), 'PTW changed + dated PTW history kept');
 ok(!api('settingSet', { t: E, key: 'ADMIN_CODE', value: '1' }).ok, 'other settings cannot be changed here');
 
+section('w1.1 · PDF photo limit in Tetapan laporan (engineer only)');
+let sl = api('settings', { t: E });
+const ph = sl.list.find((s) => s.key === 'PHOTOS_PER_ACTIVITY');
+ok(ph && ph.num && ph.num.min === 0 && ph.num.max === 9 && ph.value === '2', 'photo limit listed as a number 0–9, current value 2 (bot default)');
+ok(api('settingSet', { t: T2, key: 'PHOTOS_PER_ACTIVITY', value: '5' }).code === 'eng', 'technician cannot change it');
+ok(!api('settingSet', { t: E, key: 'PHOTOS_PER_ACTIVITY', value: '10' }).ok && !api('settingSet', { t: E, key: 'PHOTOS_PER_ACTIVITY', value: 'abc' }).ok && !api('settingSet', { t: E, key: 'PHOTOS_PER_ACTIVITY', value: '' }).ok, '10, letters and empty refused');
+r = api('settingSet', { t: E, key: 'PHOTOS_PER_ACTIVITY', value: ' 5 ' });
+ok(r.ok && String(rows('Settings').find((s) => s.key === 'PHOTOS_PER_ACTIVITY').value) === '5' && api('settings', { t: E }).list.find((s) => s.key === 'PHOTOS_PER_ACTIVITY').value === '5', 'saved as 5 in the bot\'s Settings tab');
+delete env.cache.settings;            // the bot re-reads Settings every 5 minutes
+ok(W.botExec(() => W.bot.photosPerActivity_(W.bot.settings_())) === 5, 'the bot\'s PDF engine now uses 5 photos per activity');
+const m2 = api('meta', { t: T2 });
+ok(m2.pdfPhotos === 5 && m2.maxPhotos === 20, 'app told: PDF shows 5, an activity may hold up to 20 (bot limit)');
+const many = Array.from({ length: 7 }, () => api('upload', { t: T2, cid: cid(), date: '10/10/2026', mime: 'image/jpeg', b64: JPG }).id);
+sv = api('save', { t: T2, cid: cid(), date: '10/10/2026', area: 'U1', cat: 'U1_GEN', status: 'IP', shift: 'D', text: 'Stator inspection with 7 photos.', photos: many });
+ok(sv.ok && api('day', { t: T2, date: '10/10/2026' }).entries.find((e) => e.id === sv.id).photos.length === 7, 'an activity keeps all 7 photos (no app-side cap below the bot\'s 20)');
+
 section('Clean run');
 ok(!rows('Log').some((l) => l.level === 'ERROR'), 'no ERROR rows in the Log tab');
 ok(env.warnings.length === 0, 'no unprotected values written to Sheets' + (env.warnings.length ? ': ' + env.warnings.slice(0, 3).join(' | ') : ''));

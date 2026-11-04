@@ -4,9 +4,8 @@
 (function () {
   'use strict';
 
-  const APP_VERSION = '1.0.0';
+  const APP_VERSION = '1.1.0';
   const TZ = 'Asia/Kuala_Lumpur';
-  const MAX_PHOTOS = 9;           // the PDF shows up to 9 per activity (3 × 3)
   const PHOTO_EDGE = 1600;        // longest side after shrinking on the phone
   const PHOTO_Q = 0.82;
 
@@ -376,6 +375,8 @@
       return S.days[date] || null;
     }
   }
+  const maxPhotos = () => (S.meta && S.meta.maxPhotos) || 20;      // the bot's per-entry limit
+  const pdfPhotos = () => (S.meta && S.meta.pdfPhotos != null ? S.meta.pdfPhotos : 2);   // PHOTOS_PER_ACTIVITY (PDF only)
   const catOf = (key) => (S.meta && S.meta.cats.find((c) => c.key === key)) || null;
 
   // ---------------------------------------------------------------- boot & login
@@ -616,8 +617,8 @@
     file.onchange = async () => {
       const files = Array.from(file.files || []);
       file.value = '';
-      const room = MAX_PHOTOS - st.photos.length;
-      if (files.length > room) toast('Maksimum ' + MAX_PHOTOS + ' gambar setiap aktiviti.', 'bad');
+      const MAXP = maxPhotos(); const room = MAXP - st.photos.length;
+      if (files.length > room) toast('Maksimum ' + MAXP + ' gambar setiap aktiviti.', 'bad');
       for (const f of files.slice(0, room)) {
         const tmp = { cid: uid(), busy: true, thumb: '' };
         st.photos.push(tmp); draw();
@@ -634,10 +635,11 @@
         const lc = catOf(last.cat);
         if (lc) h += '<div class="chips" style="margin:2px 0 6px"><button class="chip same" data-same>' + ic('repeat', 's') + ' Sama: ' + esc(lc.label) + ' · ' + esc(last.status) + ' · ' + (last.shift === 'N' ? 'Malam' : 'Siang') + '</button></div>';
       }
-      h += '<div class="field"><div class="lbl"><span class="n">1</span> Gambar <span class="opt">' + st.photos.length + ' / ' + MAX_PHOTOS + '</span></div><div class="photos">' +
+      const MAXP = maxPhotos();
+      h += '<div class="field"><div class="lbl"><span class="n">1</span> Gambar <span class="opt">' + st.photos.length + ' / ' + MAXP + '</span></div><div class="photos">' +
         st.photos.map((p, i) => '<div class="ph">' + (p.thumb ? '<img src="' + p.thumb + '" alt="Gambar ' + (i + 1) + '">' : '') + (p.busy ? '<div class="busy"><span class="spin"></span></div>' : '<button class="rm" data-rm="' + i + '" aria-label="Buang gambar">' + ic('x', 's') + '</button>') + '</div>').join('') +
-        (st.photos.length < MAX_PHOTOS ? '<button class="add' + (st.photos.length ? '' : ' big') + '" data-pick>' + ic('camera') + '<span>' + (st.photos.length ? 'Tambah' : 'Ambil / pilih gambar') + '</span></button>' : '') + '</div>' +
-        (st.photos.length ? '' : '<p class="hint">Tiada gambar? Boleh terus isi di bawah.</p>') + '</div>';
+        (st.photos.length < MAXP ? '<button class="add' + (st.photos.length ? '' : ' big') + '" data-pick>' + ic('camera') + '<span>' + (st.photos.length ? 'Tambah' : 'Ambil / pilih gambar') + '</span></button>' : '') + '</div>' +
+        (st.photos.length ? (st.photos.length > pdfPhotos() ? '<p class="hint">📄 PDF memaparkan ' + pdfPhotos() + ' gambar pertama. Semua gambar disimpan dalam Google Drive dan dipaparkan dalam app.</p>' : '') : '<p class="hint">Tiada gambar? Boleh terus isi di bawah.</p>') + '</div>';
       h += '<div class="field"><div class="lbl"><span class="n">2</span> Kawasan</div><div class="seg">' + S.meta.areas.map((a) => '<button class="opt-card ' + a.key + '" data-area="' + a.key + '"' + pressed(st.area === a.key) + '><span class="ic">' + ic(a.key === 'U1' ? 'bolt' : 'gear', 's') + '</span><span>' + (a.key === 'U1' ? 'Unit 1' : 'Unit 4') + '<small>' + (a.key === 'U1' ? 'Common / General' : 'AHC · REMACO') + '</small></span></button>').join('') + '</div></div>';
       if (st.area) {
         let sc = null;
@@ -733,7 +735,7 @@
     const draw = () => {
       const cats = S.meta.cats.filter((c) => c.area === st.area);
       body.innerHTML = '<div class="card" style="margin-top:4px"><div class="by" style="margin:0;color:var(--ink-3);font-weight:600;font-size:12.5px">' + ic('user', 'xs') + ' ' + esc(e.who) + ' · ' + esc(dmy(e.date)) + ' ' + esc(hhmm(e.at)) + (e.photos.length ? ' · 📷 ' + e.photos.length : '') + '</div>' +
-        (e.photos.length ? '<div class="strip" data-ph>' + e.photos.slice(0, 6).map((id) => '<span class="ph"><img data-thumb="' + esc(id) + '" src="' + (S.thumbs.get(id) || '') + '" alt=""></span>').join('') + '</div>' : '') + '</div>' +
+        (e.photos.length ? '<div class="strip" data-ph>' + e.photos.map((id) => '<span class="ph"><img data-thumb="' + esc(id) + '" src="' + (S.thumbs.get(id) || '') + '" alt=""></span>').join('') + '</div>' : '') + '</div>' +
         '<div class="field"><label for="et">Ayat laporan (English)</label><textarea class="input" id="et">' + esc(st.text) + '</textarea></div>' +
         '<div class="field"><div class="lbl">Status</div><div class="seg three">' + [['NS', 'flag', 'Belum mula'], ['IP', 'clock', 'Sedang dibuat'], ['CP', 'check', 'Siap']].map((s) => '<button class="opt-card st-' + s[0] + '" data-st="' + s[0] + '"' + pressed(st.status === s[0]) + '><span class="ic">' + ic(s[1], 's') + '</span><span>' + s[0] + '<small>' + s[2] + '</small></span></button>').join('') + '</div></div>' +
         '<div class="field"><div class="lbl">Syif</div><div class="seg"><button class="opt-card sh-D" data-sh="D"' + pressed(st.shift === 'D') + '><span class="ic">' + ic('sun', 's') + '</span>Siang</button><button class="opt-card sh-N" data-sh="N"' + pressed(st.shift === 'N') + '><span class="ic">' + ic('moon', 's') + '</span>Malam</button></div></div>' +
@@ -746,7 +748,7 @@
       const ph = $('[data-ph]', body); if (ph) ph.onclick = (ev) => viewer(e.photos, Math.max(0, $$('.ph', ph).indexOf(ev.target.closest('.ph'))));
     };
     draw();
-    loadThumbs(e.photos.slice(0, 6));
+    loadThumbs(e.photos);
     $('[data-save]', L.el).onclick = async (ev) => { const btn = ev.currentTarget;
       st.text = $('#et', body).value;
       const ch = {};
@@ -1080,6 +1082,7 @@
       $$('[data-s]', box).forEach((b) => {
         b.onclick = () => {
           const s = r.list[Number(b.dataset.s)];
+          if (s.num) return numSetting(s);
           const L = openLayer('<div class="field"><label for="sv">' + esc(s.label) + '</label><textarea class="input" id="sv" style="min-height:160px">' + esc(s.value) + '</textarea><p class="hint">Boleh beberapa baris. Sama seperti /settings dalam Telegram.</p></div>', { title: 'Tetapan', foot: '<button class="btn primary block" data-ok>Simpan</button>' });
           $('[data-ok]', L.el).onclick = async (e) => { const btn = e.currentTarget;
             busy(btn, true);
@@ -1089,6 +1092,23 @@
         };
       });
     } catch (e) { box.innerHTML = '<p class="muted">' + esc(e.message) + '</p>'; }
+  }
+
+  function numSetting(s) {
+    let v = Number(s.value) || 0;
+    const nums = Array.from({ length: s.num.max - s.num.min + 1 }, (_, i) => s.num.min + i);
+    const L = openLayer('<p class="muted" style="margin:0 4px 12px">Bilangan gambar maksimum setiap aktiviti dalam PDF harian &amp; mingguan (baris 3 gambar). Semua gambar tetap disimpan dalam Google Drive dan dipaparkan dalam app.</p>' +
+      '<div class="seg" style="grid-auto-flow:row;grid-template-columns:repeat(5,1fr)">' + nums.map((n) => '<button class="opt-card" style="justify-content:center;font-size:20px" data-n="' + n + '" aria-pressed="' + (n === v) + '">' + n + '</button>').join('') + '</div>' +
+      '<p class="hint">0 = tiada gambar dalam PDF.</p>', { title: s.label, foot: '<button class="btn primary block" data-ok>' + ic('check', 's') + ' Simpan</button>' });
+    $$('[data-n]', L.el).forEach((b) => { b.onclick = () => { v = Number(b.dataset.n); $$('[data-n]', L.el).forEach((x) => x.setAttribute('aria-pressed', x === b)); }; });
+    $('[data-ok]', L.el).onclick = async (e) => { const btn = e.currentTarget;
+      busy(btn, true);
+      try {
+        await api('settingSet', { key: s.key, value: String(v) });
+        if (S.meta) { S.meta.pdfPhotos = v; ls.set('meta', S.meta); }
+        toast('PDF: ' + v + ' gambar setiap aktiviti ✓', 'ok'); closeLayer(); settingsList();
+      } catch (err) { busy(btn, false); toast(err.message, 'bad'); }
+    };
   }
 
   // expose a little for the preview tools

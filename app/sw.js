@@ -1,5 +1,5 @@
 // Offline shell for the HLEP DPR web-app. API calls (to script.google.com) are never cached.
-const CACHE = 'hlep-dpr-1.0.1';
+const CACHE = 'hlep-dpr-1.1.0';
 const SHELL = ['./', 'index.html', 'styles.css', 'app.js', 'config.js', 'manifest.webmanifest',
   'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png'];
 

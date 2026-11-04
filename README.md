@@ -55,7 +55,7 @@ It works alongside the Telegram "HLEP DPR Bot" and writes into the same Google S
 
 ```bash
 npm install
-npm test           # builds WebApp.gs, then runs the web backend and the bot together (93 checks)
+npm test           # builds WebApp.gs, then runs the web backend and the bot together (100 checks)
 npm run dev        # local preview on http://localhost:8080 with a demo day (PIN 1234)
 ```
 

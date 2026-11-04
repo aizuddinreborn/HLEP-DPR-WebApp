@@ -17,7 +17,7 @@
 //  The bot's Code.gs is never changed. This project only adds rows the bot already understands
 //  (source = "web") and one tab of its own, "WebUsers".
 
-const WEB_VERSION = 'w1.0';
+const WEB_VERSION = 'w1.1';
 const WEB_TAB = 'WebUsers';
 const WEB_HEAD = ['user_id', 'name', 'role', 'new_pin', 'pin_set', 'active', 'last_login', 'added_at', 'note'];
 const WEB_TOKEN_DAYS = 30;
@@ -344,6 +344,7 @@ function apiMeta_(u) {
     status: [{ key: 'NS', label: STATUS_LABEL.NS }, { key: 'IP', label: STATUS_LABEL.IP }, { key: 'CP', label: STATUS_LABEL.CP }],
     weather: String(setting_('WEATHER_OPTIONS') || 'Sunny, Clear, Cloudy, Rainy, Hazy').split(',').map(function (s) { return s.trim(); }).filter(String),
     ai: aiOn_(), pdf: !!(prop_('BOT_WEBAPP_URL') && prop_('BOT_WEBHOOK_SECRET')),
+    maxPhotos: MAX_PHOTOS, pdfPhotos: photosPerActivity_(settings_()),
     headlineAi: String(setting_('HEADLINE_AI') || 'Y').toUpperCase() !== 'N'
   };
 }
@@ -747,16 +748,31 @@ function apiPdf_(b) {
   return { name: f.getName(), b64: Utilities.base64Encode(f.getBlob().getBytes()), url: r.pdf_url };
 }
 
-// ---------- settings (PTW, PIC, time start, sign-off) ----------
+// ---------- settings (PTW, PIC, time start, sign-off, photo limit) ----------
+
+// The bot's /settings list, plus the PDF photo limit (the bot's PHOTOS_PER_ACTIVITY setting, 0–9).
+function webSettingsList_() {
+  return EDITABLE_SETTINGS.map(function (s) { return { key: s[0], label: s[1] }; })
+    .concat([{ key: 'PHOTOS_PER_ACTIVITY', label: '📷 Had gambar dalam PDF', num: { min: 0, max: PHOTO_MAX } }]);
+}
 
 function apiSettings_() {
-  return { list: EDITABLE_SETTINGS.map(function (s) { return { key: s[0], label: s[1], value: setting_(s[0]) }; }) };
+  return { list: webSettingsList_().map(function (s) {
+    return { key: s.key, label: s.label, num: s.num || null,
+      value: s.key === 'PHOTOS_PER_ACTIVITY' ? String(photosPerActivity_(settings_())) : setting_(s.key) };
+  }) };
 }
 
 function apiSettingSet_(u, b) {
   const key = String(b.key || '');
-  if (!EDITABLE_SETTINGS.some(function (s) { return s[0] === key; })) throw webErr_('Tetapan ini tidak boleh diubah di sini.');
-  const v = String(b.value === undefined ? '' : b.value).replace(/\r\n/g, '\n').slice(0, 3000);
+  const def = webSettingsList_().filter(function (s) { return s.key === key; })[0];
+  if (!def) throw webErr_('Tetapan ini tidak boleh diubah di sini.');
+  let v = String(b.value === undefined ? '' : b.value).replace(/\r\n/g, '\n').slice(0, 3000);
+  if (def.num) {
+    const n = Number(v.trim());
+    if (!/^\d+$/.test(v.trim()) || n < def.num.min || n > def.num.max) throw webErr_('Nombor ' + def.num.min + '–' + def.num.max + '.');
+    v = String(n);
+  }
   withLock_(function () {
     setSetting_(key, v);
     if (/^PTW_U[14]$/.test(key)) snapshotPtw_(u.name);     // dated PTW history for /weekly, as the bot does
