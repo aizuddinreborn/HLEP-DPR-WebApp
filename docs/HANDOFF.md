@@ -1,7 +1,7 @@
 # HLEP DPR Web-app – session handoff (as of w1.0, 05/11/2026)
 
 Build session: https://claude.ai/code/session_013Z1t4uvdrdQSVrZNFCMGRj
-Repo: https://github.com/aizuddinreborn/hlep-dpr-webapp (public; GitHub Pages serves `app/`)
+Repo: https://github.com/aizuddinreborn/hlep-dpr-webapp (public) · App: https://aizuddinreborn.github.io/HLEP-DPR-WebApp/ (GitHub Pages serves `app/` via Actions; already enabled)
 
 ## Prompt to start the next session
 
@@ -26,7 +26,6 @@ My next request: <write it here>
 - **Delivered:** the app (`app/`), the backend source (`backend/src/web.gs`), the build script, 93 tests, and a 9:16 BM how-to video.
   - `WebApp.gs` is built from web.gs plus the bot's v1.4 functions. It is not in the repo; it was sent to the user as a file.
 - **The user still needs to:**
-  - enable Pages (Settings → Pages → Source: GitHub Actions),
   - create and deploy the backend (README "One-time setup"),
   - put the `/exec` URL in `app/config.js`,
   - type PINs in the `WebUsers` tab.

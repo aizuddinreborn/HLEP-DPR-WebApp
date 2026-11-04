@@ -20,7 +20,7 @@ const stillsArg = args.indexOf('--stills') >= 0 ? args[args.indexOf('--stills') 
   let html = fs.readFileSync(path.join(__dirname, 'compose.html'), 'utf8')
     .replace(/FONTS\//g, 'file://' + FONTS + '/')
     .replace(/src="ICON"/g, 'src="file://' + path.join(ROOT, 'app', 'icons', 'icon-512.png') + '"')
-    .replace('<script>', '<script>window.SHOTS=' + JSON.stringify(shots) + ';window.TAPS=' + JSON.stringify(taps) + ';window.URL_TEXT="aizuddinreborn.github.io/hlep-dpr-webapp";</script><script>');
+    .replace('<script>', '<script>window.SHOTS=' + JSON.stringify(shots) + ';window.TAPS=' + JSON.stringify(taps) + ';window.URL_TEXT="aizuddinreborn.github.io/HLEP-DPR-WebApp";</script><script>');
   const page = path.join(CACHE, 'compose.html');
   fs.writeFileSync(page, html);
 

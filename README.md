@@ -1,5 +1,7 @@
 # HLEP DPR web-app
 
+**App:** https://aizuddinreborn.github.io/HLEP-DPR-WebApp/ · **How-to video (BM):** [app/media/cara-guna.mp4](app/media/cara-guna.mp4)
+
 A pastel, phone-first web-app for the HLEP – SJ Chenderoh electrical **Daily Progress Report**.
 It works alongside the Telegram "HLEP DPR Bot" and writes into the same Google Sheet and Drive folders, so web-app entries appear in the bot's WhatsApp text and PDF automatically.
 
