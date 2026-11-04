@@ -1,7 +1,7 @@
 # HLEP DPR Web-app – session handoff (as of w1.1, 05/11/2026)
 
 Build session: https://claude.ai/code/session_013Z1t4uvdrdQSVrZNFCMGRj
-Repo: https://github.com/aizuddinreborn/hlep-dpr-webapp (public) · App: https://aizuddinreborn.github.io/HLEP-DPR-WebApp/ (Pages publishes the `main` branch root; the root `index.html` redirects to `app/`, so the app's real address is …/HLEP-DPR-WebApp/app/. The Actions workflow in `.github/workflows/pages.yml` is only used if Pages → Source is switched to GitHub Actions.)
+Repo: https://github.com/aizuddinreborn/hlep-dpr-webapp (public) · App: https://aizuddinreborn.github.io/HLEP-DPR-WebApp/ (Pages publishes the `main` branch root; the root `index.html` redirects to `app/`, so the app's real address is …/HLEP-DPR-WebApp/app/. Do not add a GitHub Actions Pages workflow: two deployments race and the one that finishes last wins, which caused a 404 on /app/.)
 
 ## Prompt to start the next session
 
