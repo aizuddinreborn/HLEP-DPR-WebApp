@@ -36,6 +36,9 @@ const ROOTS = [
   'polish_', 'aiOn_', 'gemini_', 'parseJson_', 'AI_STYLE', 'AI_PLAN_STYLE',
   // WhatsApp text + headline + PTW history
   'buildWA_', 'hlKey_', 'headlineRow_', 'saveHeadline_', 'draftHeadline_', 'cleanHeadline_', 'snapshotPtw_', 'dashMap_', 'docNo_',
+  // contractor PDF reports: reading, tick list, save, undo (w1.3)
+  'md5Hex_', 'pdfRowSet_', 'pdfSeen_', 'pdfSameReport_', 'contractorFolder_', 'analyzePdf_', 'writeImport_', 'importRows_',
+  'finalLine_', 'findMerges_', 'saveImport_', 'undoImport_', 'discardImport_',
   // labels
   'STATUS_LABEL', 'AREA_LABEL', 'EDITABLE_SETTINGS', 'MAX_PHOTOS', 'TZ', 'BOT_VERSION', 'SCHEMA_VER', 'SHEETS'
 ];

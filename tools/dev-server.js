@@ -21,9 +21,25 @@ const AI = {
   'pasang DB 415VAC baru di bilik suis': 'Installation of the new 415VAC DB in the switch room is ongoing.',
   'cuci dan periksa stator': 'Cleaning and inspection of the stator is ongoing.'
 };
+// a contractor daily report (any PDF uploaded in the preview reads as this one)
+const ymdKL = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kuala_Lumpur', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+const PDF_ITEMS = [
+  { category: 'U1_EPS', area: 'U1', status: 'IP', shift: 'D', kind: 'today', line: 'Installation of battery racks inside the battery room is ongoing (2 of 4 racks).', source: 'Batt rack installation 2/4 nos', page: 2 },
+  { category: '', area: 'U1', status: 'IP', shift: 'D', kind: 'today', line: 'Installation of lighting fixtures at the intake area is ongoing.', source: 'Lighting fixture install at intake', page: 2 },
+  { category: 'U4_MS_GEN', area: 'U4', status: 'CP', shift: 'N', kind: 'today', line: 'Removed the top half bearing (DE).', source: 'Night: remove top half brg DE - done', page: 3 },
+  { category: 'U1_FIRE', area: 'U1', status: 'NS', shift: 'D', kind: 'tomorrow', line: 'Function test of the fire pump control panel.', source: 'Tomorrow: FT fire pump CP', page: 4 },
+  { category: 'U1_PHCRANE', area: 'U1', status: 'CP', shift: 'D', kind: 'today', line: 'Load test of the powerhouse crane completed.', source: 'PH crane load test OK', page: 5 }
+];
 function responder(body) {
   const parts = body.contents[0].parts;
   const txt = parts.filter((p) => p.text).map((p) => p.text).join('\n');
+  if (parts.some((p) => p.inlineData && p.inlineData.mimeType === 'application/pdf')) {
+    return JSON.stringify({ report_date: ymdKL(), contractor: 'SCI Sdn Bhd', items: PDF_ITEMS, skipped_non_electrical: 9 });
+  }
+  if (/EXISTING lines/.test(txt)) {
+    const ex = txt.split('NEW lines')[0].split('\n').filter((l) => / \| U1_EPS \| /.test(l) && /battery/i.test(l));
+    return JSON.stringify({ merges: ex.length ? [{ new: 1, existing: ex[0].split(' | ')[0].trim(), merged: 'Installed battery racks inside the battery room; 2 of 4 racks completed by the contractor.' }] : [] });
+  }
   if (/single word OK/.test(txt)) return 'OK';
   if (/^Lines from the electrical/.test(txt)) return 'Cable pulling from SST to LV panel 60 m completed; Unit 4 stator cleaning and inspection ongoing';
   if (/Does the NEW line report the SAME/.test(txt)) return '{"same": 0}';
@@ -69,6 +85,10 @@ async function main() {
     W.api('weather', { t: E, date: today, w: 'Sunny' });
     W.api('manpower', { t: E, list: [{ company: 'KEM LETRIK', count: 8 }, { company: 'SCI', count: 9 }, { company: 'MS REMACO', count: 30 }] });
     W.api('plan', { t: E, area: 'U1', cat: 'U1_EPS', text: 'Continue cable termination at the LV panel.' });
+    if (!process.env.NOPDF) {      // one contractor list waiting to be ticked
+      const up = W.api('pdfUpload', { t: tok('Azhar'), name: 'SCI Daily Report ' + today.replace(/\//g, '-') + '.pdf', b64: Buffer.from('%PDF-1.4 demo SCI').toString('base64') });
+      W.api('pdfRead', { t: tok('Azhar'), id: up.id });
+    }
   }
   console.log('Team PIN for every demo user: 1234');
 
@@ -83,7 +103,7 @@ async function main() {
           const j = JSON.parse(body || '{}');
           out = W.webExec(() => W.web.doPost({ postData: { contents: JSON.stringify(j) } })).content;
         } catch (e) { out = JSON.stringify({ ok: false, err: String(e.message || e) }); }
-        const delay = Number(process.env.DELAY || 250);
+        const delay = /"a":"pdfRead"/.test(body) ? 7000 : Number(process.env.DELAY || 250);
         setTimeout(() => { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(out); }, delay);
       });
       return;

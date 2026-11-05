@@ -4,7 +4,7 @@
 (function () {
   'use strict';
 
-  const APP_VERSION = '1.2.0';
+  const APP_VERSION = '1.3.0';
   const TZ = 'Asia/Kuala_Lumpur';
   const PHOTO_EDGE = 1600;        // longest side after shrinking on the phone
   const PHOTO_Q = 0.82;
@@ -188,7 +188,7 @@
     $('#layer').appendChild(wrap);
     const L = { el: wrap, onClose: opt.onClose, closed: false };
     layers.push(L);
-    history.pushState({ layer: layers.length }, '');
+    whenSettled(() => history.pushState({ layer: layers.length }, ''));
     wrap.addEventListener('click', (e) => { if (e.target.matches('.scrim') || e.target.closest('[data-close]')) closeLayer(); });
     setTimeout(() => { const f = wrap.querySelector('[autofocus]'); if (f && window.innerWidth > 899) f.focus(); }, 300);
     return L;
@@ -203,7 +203,15 @@
     if (!fromPop) { skipPop++; history.back(); }
   }
   let skipPop = 0;      // our own history.back() must not close the layer underneath as well
-  window.addEventListener('popstate', () => { if (skipPop > 0) { skipPop--; return; } if (layers.length) closeLayer(true); });
+  // history.back() is asynchronous: a pushState or hash change made before it lands would be the entry it removes,
+  // and the history would drift one step each time (until "back" leaves the app). Wait for it instead.
+  const afterPop = [];
+  function whenSettled(fn) { if (skipPop > 0) afterPop.push(fn); else fn(); }
+  function goHash(t) { whenSettled(() => { if (location.hash.replace('#', '') !== t) location.hash = t; }); }
+  window.addEventListener('popstate', () => {
+    if (skipPop > 0) { skipPop--; if (!skipPop) afterPop.splice(0).forEach((f) => f()); return; }
+    if (layers.length) closeLayer(true);
+  });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && layers.length) closeLayer(); });
 
   function confirmBox(title, text, yes, kind) {
@@ -443,7 +451,7 @@
         const r = await api('login', { id: p.id, pin });
         S.session = { token: r.token, user: r.user }; ls.set('session', S.session); ls.set('lastUser', p.id);
         toast('Selamat datang, ' + r.user.name.split(' ')[0] + '!', 'ok');
-        S.tab = 'home'; location.hash = 'home';
+        S.tab = 'home'; goHash('home');
         render();
         await loadMeta(); await loadDay(S.date, true); render(); syncOutbox();
       } catch (e) {
@@ -481,7 +489,7 @@
         tabBtn('home', 'home', 'Hari ini') + tabBtn('data', 'grid', 'Data') +
         '<button class="fab" id="fab" aria-label="Tambah aktiviti">' + ic('plus') + '</button>' +
         tabBtn('report', 'file', 'Laporan') + tabBtn('me', 'user', 'Saya') + '</div></nav>';
-      $$('.tab').forEach((b) => { b.onclick = () => { S.tab = b.dataset.tab; location.hash = S.tab; window.scrollTo({ top: 0 }); render(); }; });
+      $$('.tab').forEach((b) => { b.onclick = () => { S.tab = b.dataset.tab; goHash(S.tab); window.scrollTo({ top: 0 }); render(); }; });
       $('#fab').onclick = () => addSheet();
     }
     $$('.tab').forEach((b) => b.classList.toggle('on', b.dataset.tab === S.tab));
@@ -512,7 +520,7 @@
       '<button class="iconbtn" data-dnext aria-label="Hari seterusnya"' + (S.date >= today() ? ' disabled' : '') + '>' + ic('right') + '</button></div>';
   }
   function bindCommon() {
-    $$('[data-go]').forEach((b) => { b.onclick = () => { S.tab = b.dataset.go; location.hash = S.tab; render(); }; });
+    $$('[data-go]').forEach((b) => { b.onclick = () => { S.tab = b.dataset.go; goHash(S.tab); render(); }; });
     const setDate = async (d) => { if (d > today()) return; S.date = d; render(); await loadDay(d); render(); };
     const p = $('[data-dprev]'); if (p) p.onclick = () => setDate(addDays(S.date, -1));
     const n = $('[data-dnext]'); if (n) n.onclick = () => setDate(addDays(S.date, 1));
@@ -543,6 +551,7 @@
     h += '<div class="stats" style="margin-top:4px"><div class="stat lav"><span class="ic">' + ic('flag', 's') + '</span><span class="n">' + (d ? list.length + pend.length : '–') + '</span><span class="l">Aktiviti</span></div>' +
       '<div class="stat mint"><span class="ic">' + ic('image', 's') + '</span><span class="n">' + (d ? nPhotos : '–') + '</span><span class="l">Gambar</span></div>' +
       '<button class="stat peach" data-weather><span class="ic">' + ic(/rain/i.test(d && d.weather) ? 'cloud' : 'sun', 's') + '</span><span class="n sm">' + esc((d && d.weather) || 'Tetapkan') + '</span><span class="l">Cuaca</span></button></div>';
+    if (d) h += importsCard(d.imports);
     if (!d) {
       h += '<div class="skel" style="height:120px;margin-top:22px"></div><div class="skel" style="height:120px;margin-top:10px"></div>';
     } else if (!list.length && !pend.length) {
@@ -580,7 +589,7 @@
     return '<article class="act rise" data-entry="' + esc(e.id) + '"><div class="meta">' + statusPill(e.status) + (e.shift === 'N' ? '<span class="pill N">' + ic('moon', 'xs') + ' Malam</span>' : '') +
       (e.src === 'contractor' ? '<span class="pill wait">📄 kontraktor</span>' : '') + '</div>' +
       '<div class="txt">' + esc(e.text) + '</div>' + (ph ? '<div class="strip" data-photos="' + esc(e.id) + '">' + ph + '</div>' : '') +
-      '<div class="by">' + ic('user', 'xs') + esc(e.who) + ' · ' + esc(hhmm(e.at)) + (e.src === 'web' ? ' · web' : e.src === 'merged' ? ' · digabung' : ' · Telegram') + '</div>' +
+      '<div class="by">' + ic('user', 'xs') + esc(e.who) + ' · ' + esc(hhmm(e.at)) + (e.src === 'web' ? ' · web' : e.src === 'merged' ? ' · digabung' : e.src === 'contractor' ? ' · PDF kontraktor' : ' · Telegram') + '</div>' +
       (e.edit ? '<button class="edit" data-edit="' + esc(e.id) + '" aria-label="Ubah">' + ic('edit', 's') + '</button>' : '') + '</article>';
   }
   function pendingCard(x) {
@@ -602,6 +611,7 @@
     $$('[data-photos]').forEach((s) => { s.onclick = (ev) => { ev.stopPropagation(); const e = d.entries.find((x) => x.id === s.dataset.photos); const i = $$('.ph', s).indexOf(ev.target.closest('.ph')); viewer(e.photos, Math.max(0, i)); }; });
     $$('[data-entry]').forEach((a) => { a.onclick = () => { const e = d.entries.find((x) => x.id === a.dataset.entry); if (e && e.edit) editSheet(e); }; });
     if (d) loadThumbs([].concat(...d.entries.map((e) => e.photos.slice(0, 3))));
+    bindImports(d && d.imports);
   };
 
   // ---------------------------------------------------------------- ADD ACTIVITY
@@ -636,6 +646,7 @@
         const lc = catOf(last.cat);
         if (lc) h += '<div class="chips" style="margin:2px 0 6px"><button class="chip same" data-same>' + ic('repeat', 's') + ' Sama: ' + esc(lc.label) + ' · ' + esc(last.status) + ' · ' + (last.shift === 'N' ? 'Malam' : 'Siang') + '</button></div>';
       }
+      if (S.meta.pdfImport && !st.photos.length && !st.area && !prefill) h += '<button class="pdf-in" data-cpdf><span class="ic">' + ic('file') + '</span><span class="grow"><b>PDF laporan kontraktor</b><small>AI ambil kerja elektrik sahaja → tanda → simpan</small></span>' + ic('right', 's') + '</button>';
       const MAXP = maxPhotos();
       h += '<div class="field"><div class="lbl"><span class="n">1</span> Gambar <span class="opt">' + st.photos.length + ' / ' + MAXP + '</span></div><div class="photos">' +
         st.photos.map((p, i) => '<div class="ph">' + (p.thumb ? '<img src="' + p.thumb + '" alt="Gambar ' + (i + 1) + '">' : '') + (p.busy ? '<div class="busy"><span class="spin"></span></div>' : '<button class="rm" data-rm="' + i + '" aria-label="Buang gambar">' + ic('x', 's') + '</button>') + '</div>').join('') +
@@ -667,6 +678,7 @@
     const bindAdd = () => {
       const keep = () => { const r = $('#raw', body); if (r) st.raw = r.value; const p = $('#pv', body); if (p) st.text = p.innerText.trim(); };
       $$('[data-pick]', body).forEach((b) => { b.onclick = () => file.click(); });
+      const cp = $('[data-cpdf]', body); if (cp) cp.onclick = () => pickPdf((f) => { closeLayer(); pdfImport(f); });
       $$('[data-rm]', body).forEach((b) => { b.onclick = () => { keep(); st.photos.splice(Number(b.dataset.rm), 1); draw(); }; });
       $$('[data-area]', body).forEach((b) => { b.onclick = () => { keep(); if (st.area !== b.dataset.area) { st.area = b.dataset.area; st.cat = ''; } draw(); }; });
       $$('[data-cat]', body).forEach((b) => { b.onclick = () => { keep(); st.cat = b.dataset.cat; draw(); scrollNext('[data-st]'); }; });
@@ -700,7 +712,7 @@
       ls.set('lastPick', { area: st.area, cat: st.cat, status: st.status, shift: st.shift });
       closeLayer();
       if (S.date !== st.date) { S.date = st.date; loadDay(st.date, true).then(render); }
-      S.tab = 'home'; location.hash = 'home';
+      S.tab = 'home'; goHash('home');
       await queueEntry(item);
       toast(navigator.onLine ? 'Disimpan – menghantar…' : 'Disimpan dalam telefon. Dihantar bila ada internet.', 'ok');
     };
@@ -965,6 +977,252 @@
         else await api('material', { area: st.area, cat: st.cat, item: st.item, date: dmy(st.date) });
         toast(m ? 'Bahan dikemas kini ✓' : 'Bahan disimpan ✓', 'ok'); closeLayer(); await loadDay(S.date, true); render();
       }
+      catch (err) { busy(btn, false); toast(err.message, 'bad'); }
+    };
+  }
+
+  // ---------------------------------------------------------------- CONTRACTOR PDF (w1.3)
+  // The bot's own flow: upload → AI keeps electrical items only → tick list → save into the day's report.
+  const MAX_PDF = 20 * 1024 * 1024;
+  const impSeen = () => ls.get('impSeen', []);
+  const markImpSeen = (id) => { const s = impSeen(); if (s.indexOf(id) < 0) { s.push(id); ls.set('impSeen', s.slice(-60)); } };
+
+  function pickPdf(cb) {
+    const f = document.createElement('input');
+    f.type = 'file'; f.accept = 'application/pdf,.pdf'; f.hidden = true;
+    document.body.appendChild(f);
+    f.onchange = () => { const x = f.files && f.files[0]; f.remove(); if (x) cb(x); };
+    f.click();
+  }
+
+  async function pdfWait(id) {
+    let done = null;
+    api('pdfRead', { id }, { timeout: 400000 }).then((r) => { if (!done) done = r; }).catch((e) => { if (!e.net && !done) done = { state: 'failed', why: e.message }; });
+    const t0 = Date.now();
+    while (!done && Date.now() - t0 < 8 * 60000) {
+      await sleep(5000);
+      if (done) break;
+      try { const s = await api('pdfState', { id }); if (s.state !== 'reading' && !done) done = s; } catch (e) { /* weak signal: keep waiting */ }
+    }
+    return done || { state: 'failed', why: 'Terlalu lama dibaca.' };
+  }
+
+  async function pdfImport(f) {
+    if (!/pdf/i.test(f.type) && !/\.pdf$/i.test(f.name)) return toast('Pilih fail PDF.', 'bad');
+    if (f.size > MAX_PDF) return toast('PDF lebih 20 MB. Sila kecilkan (compress) atau pecahkan PDF.', 'bad');
+    if (!navigator.onLine) return toast('Perlu internet untuk hantar PDF.', 'bad');
+    const L = openLayer('<div id="pib"></div>', { title: 'Laporan kontraktor' });
+    const body = $('#pib', L.el);
+    const STEPS = ['Menghantar PDF', 'AI membaca – kerja elektrik sahaja', 'Senarai untuk ditanda'];
+    const draw = (cur, extra) => {
+      body.innerHTML = '<div class="pdf-file">' + ic('file') + '<div class="grow"><b>' + esc(f.name) + '</b><small>' + (f.size < 1048576 ? Math.max(1, Math.round(f.size / 1024)) + ' KB' : (f.size / 1048576).toFixed(1) + ' MB') + '</small></div></div>' +
+        '<ol class="steps">' + STEPS.map((s, i) => { const k = i < cur ? 'done' : i === cur ? 'on' : ''; return '<li class="' + k + '"><span class="b">' + (k === 'done' ? ic('check', 'xs') : k === 'on' ? '<span class="spin"></span>' : (i + 1)) + '</span><span>' + esc(s) + '</span></li>'; }).join('') + '</ol>' + (extra || '');
+    };
+    draw(0);
+    let up;
+    try { up = await api('pdfUpload', { name: f.name, b64: await blobToB64(f) }, { timeout: 300000 }); }
+    catch (e) { if (!L.closed) closeLayer(); return toast(e.message, 'bad'); }
+    if (up.seen) {
+      const s = up.seen;
+      const what = s.st === 'saved' ? '✅ Sudah disimpan' + (s.contractor ? ' – ' + s.contractor : '') + (s.date ? ' · ' + s.date : '') + '.'
+        : s.st === 'review' ? '📝 Senarainya sedang disemak (belum disimpan).' : s.st === 'reading' ? '⏳ Sedang dibaca sekarang.' : 'ℹ️ Sudah dibaca – tiada item elektrik.';
+      body.innerHTML = '<div class="banner butter">' + ic('warn') + '<div class="grow"><b>PDF ini sudah dihantar</b>oleh ' + esc(s.by) + ' pada ' + esc(s.at) + '</div></div>' +
+        '<div class="card"><p style="margin:0;font-weight:700;color:var(--ink)">' + esc(what) + '</p><p class="hint" style="margin:8px 0 0">Tidak dibaca semula supaya aktiviti tidak berganda.' + (s.st === 'saved' ? ' Perlu baca semula? Batalkan import lama dahulu.' : '') + '</p></div>' +
+        (s.st === 'review' || s.st === 'saved' ? '<button class="btn primary block" style="margin-top:14px" data-open>' + ic('file', 's') + ' Buka senarai</button>' : '');
+      const o = $('[data-open]', body); if (o) o.onclick = () => { closeLayer(); importSheet(s.id); };
+      return;
+    }
+    const read = async () => {
+      draw(1, '<p class="hint" style="text-align:center">Biasanya 1–3 minit. Boleh tutup skrin ini – senarai akan muncul di <b>Hari ini</b>.</p>');
+      const r = await pdfWait(up.id);
+      if (r.state === 'review') {
+        if (L.closed) { toast('Senarai PDF kontraktor sedia – lihat Hari ini.', 'ok'); refreshImports(); return; }
+        closeLayer(); importSheet(up.id); return;
+      }
+      if (L.closed) { if (r.state !== 'none') toast('Tak dapat baca ' + f.name + '.', 'bad'); refreshImports(); return; }
+      if (r.state === 'none') {
+        body.innerHTML = '<div class="card empty" style="padding:22px 16px"><h3>Tiada item elektrik</h3><p>' + esc(f.name) + (r.contractor ? ' (' + esc(r.contractor) + ')' : '') + ' tiada kerja elektrik untuk laporan kita.</p></div>';
+        return;
+      }
+      if (r.state === 'saved') { closeLayer(); importSheet(up.id); return; }
+      draw(1, '<div class="banner rose" style="margin-top:12px">' + ic('warn') + '<div class="grow"><b>Tak dapat baca PDF ini</b>' + esc(r.why || 'Cuba lagi nanti, atau hantar PDF yang lebih kecil.') + '</div></div>' +
+        '<div class="btn-row" style="margin-top:12px"><button class="btn ghost" data-close>Tutup</button><button class="btn primary" data-again>' + ic('sync', 's') + ' Cuba lagi</button></div>');
+      $('.steps li.on .b', body).innerHTML = ic('x', 'xs');
+      $('[data-again]', body).onclick = () => read();
+    };
+    read();
+  }
+
+  async function refreshImports() { await loadDay(S.date, true); if (S.tab === 'home' && !layers.length) render(); }
+
+  // ---- Hari ini card
+  function importsCard(im) {
+    if (!im) return '';
+    const eng = isEng();
+    const seen = impSeen();
+    const doneNew = im.done.filter((x) => eng && !x.savedByEng && seen.indexOf(x.id) < 0);
+    if (!im.reading.length && !im.failed.length && !im.pending.length && !im.done.length) return '';
+    let h = '<div class="section-t imp-t"><h2>📄 Laporan kontraktor</h2>' + (doneNew.length ? '<span class="pill wait">' + doneNew.length + ' baru</span>' : '') + '</div><div class="card imp-card">';
+    im.reading.forEach((x) => { h += '<div class="imp-row"><span class="ic lav"><span class="spin"></span></span><span class="grow"><b>' + esc(x.name) + '</b><small>AI sedang membaca · ' + esc(x.by) + '</small></span></div>'; });
+    im.failed.forEach((x) => { h += '<div class="imp-row"><span class="ic rose">' + ic('warn', 's') + '</span><span class="grow"><b>' + esc(x.name) + '</b><small>Tak dapat dibaca</small></span><button class="btn sm soft" data-pagain="' + esc(x.id) + '">Cuba lagi</button><button class="iconbtn sm" data-pdrop="' + esc(x.id) + '" aria-label="Buang">' + ic('x', 's') + '</button></div>'; });
+    im.pending.forEach((x) => { h += '<button class="imp-row" data-imp="' + esc(x.id) + '"><span class="ic butter">' + ic('file', 's') + '</span><span class="grow"><b>' + esc(x.contractor || x.name) + ' · ' + (x.date ? esc(dmy(x.date)) : '❓ tarikh') + '</b><small>Belum disimpan · ' + x.picked + ' / ' + x.n + ' dipilih · ' + esc(x.by) + '</small></span>' + ic('right', 's') + '</button>'; });
+    im.done.forEach((x) => { const nw = doneNew.indexOf(x) >= 0; h += '<button class="imp-row" data-imp="' + esc(x.id) + '"><span class="ic mint">' + ic('check', 's') + '</span><span class="grow"><b>' + esc(x.contractor || x.name) + ' · ' + esc(dmy(x.date)) + '</b><small>' + x.n + ' item disimpan' + (x.savedBy ? ' oleh ' + esc(x.savedBy) : '') + '</small></span>' + (nw ? '<span class="pill wait">baru</span>' : '') + ic('right', 's') + '</button>'; });
+    return h + '</div>';
+  }
+  let impTimer = 0;
+  function bindImports(im) {
+    $$('[data-imp]').forEach((b) => { b.onclick = () => importSheet(b.dataset.imp); });
+    $$('[data-pdrop]').forEach((b) => { b.onclick = async () => { busy(b, true); try { await api('pdfDrop', { id: b.dataset.pdrop }); } catch (e) { toast(e.message, 'bad'); } refreshImports(); }; });
+    $$('[data-pagain]').forEach((b) => { b.onclick = async () => {
+      busy(b, true, 'Membaca…');
+      const r = await pdfWait(b.dataset.pagain);
+      if (r.state === 'review') importSheet(b.dataset.pagain); else toast(r.state === 'none' ? 'Tiada item elektrik dalam PDF ini.' : 'Masih tak dapat baca. ' + (r.why || ''), 'bad');
+      refreshImports();
+    }; });
+    clearTimeout(impTimer);
+    if (im && im.reading.length) impTimer = setTimeout(() => { if (S.tab === 'home' && !document.hidden) refreshImports(); }, 15000);
+  }
+
+  // ---- the tick list
+  function importSheet(id) {
+    markImpSeen(id);
+    let data = null;
+    let changed = false;
+    const L = openLayer('<div id="imb"><div class="skel" style="height:90px"></div><div class="skel" style="height:120px;margin-top:10px"></div><div class="skel" style="height:120px;margin-top:10px"></div></div>',
+      { title: 'Laporan kontraktor', full: true, foot: '<div id="imf"></div>', onClose: () => { if (changed) refreshImports(); } });
+    const body = $('#imb', L.el);
+    const foot = $('#imf', L.el);
+    const load = async () => {
+      try { data = await api('import', { id }); draw(); }
+      catch (e) { toast(e.message, 'bad'); closeLayer(); }
+    };
+    const headHtml = (hd) => '<div class="card imp-head"><div class="row"><span class="ic">' + ic('file') + '</span><div class="grow"><b>' + esc(hd.contractor || 'Kontraktor ?') + '</b><small>' + esc(hd.name) + '</small></div>' +
+      (hd.link ? '<a class="link" href="' + esc(hd.link) + '" target="_blank" rel="noopener">Buka PDF</a>' : '') + '</div>';
+    const draw = () => {
+      const hd = data.head;
+      if (data.done) {
+        body.innerHTML = headHtml(hd) + '</div><div class="card empty rise" style="padding:24px 16px"><h3>✅ Senarai ini sudah selesai</h3><p>' + data.saved + ' item disimpan' + (data.savedBy ? ' oleh ' + esc(data.savedBy) : '') + (hd.date ? ' untuk ' + esc(dmy(hd.date)) : '') + '.' + (data.undone ? ' ' + data.undone + ' item telah dibatalkan.' : '') + '</p></div>';
+        foot.innerHTML = '<div class="btn-row">' + (data.canUndo ? '<button class="btn ghost" data-undo>↩️ Batal import ini</button>' : '') + (hd.date && data.saved ? '<button class="btn primary" data-goday>' + ic('home', 's') + ' Lihat aktiviti</button>' : '<button class="btn primary" data-close>Tutup</button>') + '</div>';
+        bindDone();
+        return;
+      }
+      const its = data.items;
+      const picked = its.filter((x) => x.picked).length;
+      let h = headHtml(hd) + '<button class="datepill' + (hd.date ? '' : ' warn') + '" data-idate style="width:100%;margin-top:12px"><span class="ic">' + ic('cal', 's') + '</span><span class="grow"><span class="d">' +
+        (hd.date ? esc(hari(hd.date) + ' · ' + dmy(hd.date)) : '❓ Tarikh tidak dijumpai') + '</span><br><span class="w">' + (hd.date ? 'Tarikh laporan · tekan untuk tukar' : 'Tekan untuk pilih tarikh laporan') + '</span></span>' + ic('right', 's') + '</button></div>';
+      if (data.same) h += '<div class="banner butter">' + ic('warn') + '<div class="grow"><b>Laporan ' + esc(data.same.contractor || hd.contractor || 'kontraktor') + ' untuk ' + esc(data.same.date) + ' sudah dihantar</b>oleh ' + esc(data.same.by) + ' pada ' + esc(data.same.at) + '. Fail ini lain – mungkin versi semakan. Item yang sama dengan entri sedia ada ditanda 🔀.</div></div>';
+      h += '<div class="imp-bar"><b>' + picked + ' / ' + its.length + ' dipilih</b><span class="grow"></span><button class="chip sm" data-iall="1">' + ic('check', 's') + ' Semua</button><button class="chip sm" data-iall="0">Tiada</button></div>';
+      h += its.map((r) => '<article class="imp-it' + (r.picked ? ' on' : '') + '"><button class="tick" data-itick="' + r.n + '" aria-pressed="' + r.picked + '" aria-label="Pilih item ' + r.n + '">' + ic('check', 's') + '</button>' +
+        '<div class="grow" data-iedit="' + r.n + '"><div class="meta"><span class="no">' + r.n + '</span>' + (r.kind === 'plan' ? '<span class="pill wait">🗓️ Esok</span>' : '') +
+        '<span class="tag ' + r.area + '">' + (r.area === 'U4' ? 'U4' : 'U1') + '</span>' + (r.cat ? '<b class="cat">' + esc(r.catLabel) + '</b>' : '<span class="pill bad">❓ Pilih sistem</span>') +
+        (r.kind === 'plan' ? '' : statusPill(r.status)) + (r.shift === 'N' && r.kind !== 'plan' ? '<span class="pill N">' + ic('moon', 'xs') + '</span>' : '') + '</div>' +
+        '<div class="txt">' + esc(r.line) + '</div>' + (r.merged ? '<div class="mg">🔀 Digabung dengan: ' + esc(r.mergeWith) + '</div>' : '') +
+        (r.source ? '<div class="src">“' + esc(r.source) + '”' + (r.page ? ' · m/s ' + esc(r.page) : '') + '</div>' : '') + '</div>' +
+        '<button class="edit" data-iedit="' + r.n + '" aria-label="Ubah item ' + r.n + '">' + ic('edit', 's') + '</button></article>').join('');
+      h += '<p class="hint" style="text-align:center;margin-top:14px">Tekan ✓ untuk pilih · tekan item untuk tukar sistem, status, syif atau ayat.</p>';
+      body.innerHTML = h;
+      foot.innerHTML = '<div class="btn-row">' + (data.canDrop ? '<button class="btn danger" data-idrop style="flex:0 0 auto" aria-label="Buang senarai">' + ic('trash', 's') + '</button>' : '') +
+        '<button class="btn primary" data-isave' + (picked ? '' : ' disabled') + '>' + ic('check', 's') + ' Simpan ' + picked + ' item</button></div>';
+      bindList();
+    };
+    const setP = async (patch, n, btn) => {
+      if (btn) busy(btn, true);
+      try { data = await api('importSet', { id, n, patch }); changed = true; draw(); }
+      catch (e) { if (btn) busy(btn, false); if (e.code === 'gone') return load(); toast(e.message, 'bad'); }
+    };
+    const bindList = () => {
+      $$('[data-itick]', body).forEach((b) => { b.onclick = () => {
+        const r = data.items.find((x) => x.n === Number(b.dataset.itick));
+        if (!r.cat) { toast('Pilih sistem dahulu.', 'bad'); return importItemSheet(id, r, (d) => { data = d; changed = true; draw(); }); }
+        r.picked = !r.picked; draw();                                       // instant; the server confirms
+        setP({ picked: r.picked }, r.n);
+      }; });
+      $$('[data-iedit]', body).forEach((b) => { b.onclick = () => importItemSheet(id, data.items.find((x) => x.n === Number(b.dataset.iedit)), (d) => { data = d; changed = true; draw(); }); });
+      $$('[data-iall]', body).forEach((b) => { b.onclick = () => setP({ all: b.dataset.iall === '1' }, undefined, b); });
+      $('[data-idate]', body).onclick = () => pickDate(data.head.date || today(), async (v) => {
+        toast('Menyemak padanan dengan aktiviti ' + dmy(v) + '…', '');
+        try { data = await api('importDate', { id, date: dmy(v) }, { timeout: 120000 }); changed = true; draw(); } catch (e) { toast(e.message, 'bad'); }
+      }, { title: 'Tarikh laporan', min: addDays(today(), -365) });
+      const dr = $('[data-idrop]', foot);
+      if (dr) dr.onclick = async () => {
+        if (!(await confirmBox('Buang senarai ini?', 'Tiada item akan disimpan. PDF masih dalam Google Drive.', 'Ya, buang', 'danger'))) return;
+        try { await api('importDrop', { id }); changed = true; toast('Senarai dibuang.', 'ok'); closeLayer(); } catch (e) { toast(e.message, 'bad'); }
+      };
+      $('[data-isave]', foot).onclick = async (e) => { const btn = e.currentTarget;
+        if (!data.head.date) { toast('Pilih tarikh laporan dahulu.', 'bad'); return $('[data-idate]', body).click(); }
+        busy(btn, true, 'Menyimpan…');
+        try { const r = await api('importSave', { id }, { timeout: 120000 }); changed = true; result(r); }
+        catch (err) { busy(btn, false); if (err.code === 'gone') return load(); toast(err.message, 'bad'); }
+      };
+    };
+    const result = (r) => {
+      const lines = [];
+      if (r.nE) lines.push(['➕', r.nE + ' item baru']);
+      if (r.nM) lines.push(['🔀', r.nM + ' digabung dengan entri sedia ada']);
+      if (r.nP) lines.push(['🗓️', r.nP + ' rancangan untuk ' + dmy(addDays(r.date, 1))]);
+      if (r.nD) lines.push(['➖', r.nD + ' tidak dipilih']);
+      body.innerHTML = '<div class="card empty rise" style="padding:26px 16px"><div class="done-badge">' + ic('check') + '</div><h3>Disimpan ke laporan</h3><p>' + esc(r.contractor || 'Kontraktor') + ' · ' + esc(dmy(r.date)) + '</p>' +
+        '<div class="res-list">' + lines.map((l) => '<div><span>' + l[0] + '</span>' + esc(l[1]) + '</div>').join('') + '</div></div>' +
+        (!isEng() ? '<p class="hint" style="text-align:center">Engineer akan nampak import ini di Hari ini.</p>' : '');
+      foot.innerHTML = '<div class="btn-row"><button class="btn ghost" data-undo>↩️ Batal import</button><button class="btn primary" data-goday>' + ic('home', 's') + ' Lihat aktiviti</button></div>';
+      data = { head: Object.assign({}, data.head, { date: r.date }), done: true, saved: r.nE + r.nM + r.nP, canUndo: true };
+      bindDone();
+    };
+    const bindDone = () => {
+      const g = $('[data-goday]', foot);
+      if (g) g.onclick = () => { const d = data.head.date; changed = false; closeLayer(); S.date = d > today() ? today() : d; S.tab = 'home'; goHash('home'); render(); loadDay(S.date, true).then(render); };
+      const u = $('[data-undo]', foot);
+      if (u) u.onclick = async (e) => { const btn = e.currentTarget;
+        if (!(await confirmBox('Batal import ini?', 'Item dari laporan kontraktor ini dikeluarkan, dan entri asal yang digabung dipulihkan.', 'Ya, batal', 'danger'))) return;
+        busy(btn, true);
+        try { const r = await api('importUndo', { id }); changed = true; toast('Import dibatalkan – ' + r.n + ' item dikeluarkan.', 'ok'); load(); }
+        catch (err) { busy(btn, false); toast(err.message, 'bad'); }
+      };
+    };
+    load();
+  }
+
+  // ---- one item: system, status, shift, today/plan, wording
+  function importItemSheet(id, r, done) {
+    const st = { area: r.area, cat: r.cat, status: r.status, shift: r.shift, kind: r.kind, line: r.line, unmerge: false };
+    const L = openLayer('<div id="iib"></div>', { title: 'Item ' + r.n, full: true, foot: '<button class="btn primary block" data-ok>' + ic('check', 's') + ' Simpan item</button>' });
+    const body = $('#iib', L.el);
+    const pressed = (b) => ' aria-pressed="' + (b ? 'true' : 'false') + '"';
+    const keep = () => { const t = $('#iil', body); if (t) st.line = t.value; };
+    const draw = () => {
+      let h = r.source ? '<div class="src-q">“' + esc(r.source) + '”' + (r.page ? '<small>Laporan kontraktor · m/s ' + esc(r.page) + '</small>' : '') + '</div>' : '';
+      h += '<div class="field"><div class="lbl">Jenis</div><div class="seg"><button class="opt-card" data-kind="today"' + pressed(st.kind === 'today') + '><span class="ic" style="background:var(--lav-50);color:var(--lav-d)">' + ic('flag', 's') + '</span><span>Kerja hari itu<small>Masuk aktiviti</small></span></button>' +
+        '<button class="opt-card" data-kind="plan"' + pressed(st.kind === 'plan') + '><span class="ic" style="background:var(--peach-50);color:var(--peach)">' + ic('cal', 's') + '</span><span>Rancangan esok<small>Masuk rancangan</small></span></button></div></div>';
+      h += catPicker(st);
+      if (st.cat && st.kind === 'today') {
+        h += '<div class="field"><div class="lbl">Status</div><div class="seg three">' + [['NS', 'flag', 'Belum mula'], ['IP', 'clock', 'Sedang dibuat'], ['CP', 'check', 'Siap']].map((s) => '<button class="opt-card st-' + s[0] + '" data-st="' + s[0] + '"' + pressed(st.status === s[0]) + '><span class="ic">' + ic(s[1], 's') + '</span><span>' + s[0] + '<small>' + s[2] + '</small></span></button>').join('') + '</div></div>';
+        h += '<div class="field"><div class="lbl">Syif</div><div class="seg"><button class="opt-card sh-D" data-sh="D"' + pressed(st.shift === 'D') + '><span class="ic">' + ic('sun', 's') + '</span>Siang</button><button class="opt-card sh-N" data-sh="N"' + pressed(st.shift === 'N') + '><span class="ic">' + ic('moon', 's') + '</span>Malam</button></div></div>';
+      }
+      h += '<div class="field"><label for="iil">Ayat laporan (English)</label><textarea class="input" id="iil" rows="4">' + esc(st.line) + '</textarea></div>';
+      if (r.merged && !st.unmerge && st.kind === r.kind && st.cat === r.cat) h += '<div class="banner lav">' + ic('link') + '<div class="grow"><b>🔀 Digabung dengan entri sedia ada</b>' + esc(r.mergeWith) + '</div></div><button class="chip" style="margin-top:10px" data-unmerge>✂️ Jangan gabung</button>';
+      body.innerHTML = h;
+      $$('[data-kind]', body).forEach((b) => { b.onclick = () => { keep(); st.kind = b.dataset.kind; draw(); }; });
+      $$('[data-area]', body).forEach((b) => { b.onclick = () => { keep(); if (st.area !== b.dataset.area) { st.area = b.dataset.area; st.cat = ''; } draw(); }; });
+      $$('[data-cat]', body).forEach((b) => { b.onclick = () => { keep(); st.cat = b.dataset.cat; draw(); }; });
+      $$('[data-st]', body).forEach((b) => { b.onclick = () => { keep(); st.status = b.dataset.st; draw(); }; });
+      $$('[data-sh]', body).forEach((b) => { b.onclick = () => { keep(); st.shift = b.dataset.sh; draw(); }; });
+      const um = $('[data-unmerge]', body); if (um) um.onclick = () => { keep(); st.unmerge = true; if (st.line === r.line) st.line = ''; draw(); toast('Tidak digabung – tulis atau semak ayat.', ''); };
+    };
+    draw();
+    $('[data-ok]', L.el).onclick = async (e) => { const btn = e.currentTarget;
+      keep();
+      if (!st.cat) return toast('Pilih kawasan dan sistem.', 'bad');
+      const patch = {};
+      if (st.kind !== r.kind) patch.kind = st.kind;
+      if (st.cat !== r.cat) patch.cat = st.cat;
+      if (st.status !== r.status) patch.status = st.status;
+      if (st.shift !== r.shift) patch.shift = st.shift;
+      if (st.unmerge) patch.unmerge = true;
+      if (st.line.trim() && (st.line.trim() !== r.line || patch.unmerge)) patch.line = st.line.trim();
+      if (!r.picked) patch.picked = true;
+      if (!Object.keys(patch).length) return closeLayer();
+      busy(btn, true);
+      try { const d = await api('importSet', { id, n: r.n, patch }); closeLayer(); done(d); }
       catch (err) { busy(btn, false); toast(err.message, 'bad'); }
     };
   }

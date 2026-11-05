@@ -1,4 +1,4 @@
-# HLEP DPR Web-app – session handoff (as of w1.2, 05/11/2026)
+# HLEP DPR Web-app – session handoff (as of w1.3, 05/11/2026)
 
 Build session: https://claude.ai/code/session_013Z1t4uvdrdQSVrZNFCMGRj
 Repo: https://github.com/aizuddinreborn/hlep-dpr-webapp (public) · App: https://aizuddinreborn.github.io/HLEP-DPR-WebApp/ (Pages publishes the `main` branch root; the root `index.html` redirects to `app/`, so the app's real address is …/HLEP-DPR-WebApp/app/. Do not add a GitHub Actions Pages workflow: two deployments race and the one that finishes last wins, which caused a 404 on /app/.)
@@ -6,12 +6,12 @@ Repo: https://github.com/aizuddinreborn/hlep-dpr-webapp (public) · App: https:/
 ## Prompt to start the next session
 
 ```
-Continue building my "HLEP DPR Web-app" (pastel mobile PWA on GitHub Pages + its own Apps Script backend), which works alongside my Telegram "HLEP DPR Bot". The web-app is w1.2; the bot is v1.4 and must never be changed by web-app work.
+Continue building my "HLEP DPR Web-app" (pastel mobile PWA on GitHub Pages + its own Apps Script backend), which works alongside my Telegram "HLEP DPR Bot". The web-app is w1.3; the bot is v1.4 and must never be changed by web-app work.
 
 Before anything else:
 1. Attach the repo aizuddinreborn/hlep-dpr-webapp and read docs/HANDOFF.md and README.md.
 2. Read these Project docs: "claude/HLEP DPR Bot v1.4 - Code.gs" (save it to /home/claude/hlep-dpr-bot/Code.gs) and "claude/HLEP DPR Bot - dev harness bundle.txt" (unpack it as the bot handoff explains).
-3. Run `npm install && npm test` in the repo. It should end with "All 113 web checks passed".
+3. Run `npm install && npm test` in the repo. It should end with "All 167 web checks passed".
 
 How I work with you:
 - Interview me first. Ask about the goal, any missing context and the output format before building.
@@ -34,7 +34,7 @@ My next request: <write it here>
 ## Decisions (keep them)
 
 - **Data:** use the bot's own Sheet and Drive. The backend is a separate Apps Script project, and the bot's code is never edited.
-- **Shared logic:** `backend/build.js` copies 92 bot names unchanged into `WebApp.gs`, starting from `ROOTS` and following their dependencies.
+- **Shared logic:** `backend/build.js` copies 124 bot names unchanged into `WebApp.gs`, starting from `ROOTS` and following their dependencies.
   - The Telegram functions are stubbed in web.gs (`send_`, `edit_`, `tg_`).
   - Rebuild `WebApp.gs` whenever the bot changes, then run the tests.
 - **The bot's code stays private:** it is never committed to the public repo, and `backend/dist/` is git-ignored.
@@ -50,6 +50,13 @@ My next request: <write it here>
   - Anyone can create a new system, set the weather or update manpower.
   - Bahan tiba: everyone adds and edits; deleting a material is engineer only.
   - Engineer only: %, plans, WhatsApp text, weekly PDF, headline and settings.
+- **Contractor PDF reports (w1.3, decided by the user: same as the bot, tech + eng, button in the + sheet, one shared list):**
+  - The **+** sheet has a "PDF laporan kontraktor" button. Upload (max 20 MB, must start with `%PDF`) → `PdfFiles` row (`tg_unique` empty = web) → file in `Contractor Reports/yyyy-mm`.
+  - The bot's `analyzePdf_` (same prompt, electrical only), `writeImport_`, `findMerges_`, `saveImport_`, `undoImport_` and `discardImport_` are copied unchanged. The web backend waits for the read inside the request (no trigger, so no new permission); the app polls `pdfState` every 5 s.
+  - While a PDF is read its id is in the web project's `JOBS` property (plus `wr_<id>` = start time, 7 min lease), which the copied `pdfSeen_` reads as "reading". The bot cannot see the web's JOBS, so for those 1–3 minutes the same file sent in Telegram would be read again. After the read, both sides see it.
+  - Tick lists from Telegram show on Hari ini and can be finished in the web-app. A list uploaded in the web-app cannot be ticked in Telegram (the bot only shows lists on its own message; the bot is not changed).
+  - Engineers are not messaged on Telegram (the web project has no bot token); instead Hari ini shows a "baru" mark on imports saved by technicians.
+  - Undo: the saver or an engineer. Throw away a list: the uploader or an engineer.
 - **PDF:**
   - The backend posts `/report dd/mm/yyyy` (or `/weekly`) to the bot's webhook. It uses `BOT_WEBAPP_URL` + `BOT_WEBHOOK_SECRET`, and the `update_id` is the string `web…`.
   - The bot builds the PDF and sends it to that person's Telegram. The app then polls `ReportLog` and downloads the file through the backend.
@@ -74,10 +81,10 @@ My next request: <write it here>
 2. Put the bot's Code.gs at `/home/claude/hlep-dpr-bot/Code.gs`, or set `BOT_CODE`.
 3. Unpack the bot's harness bundle and set `HARNESS=<root>/harness`. The default path in `backend/test/world.js` is the build session's scratchpad.
    - The bot's own `run.js` needs three old-version files (`Code_v0.1.gs`, `Code_v0.4.gs`, `Code_v0.6.1.gs`) that are not in the bundle. Wrap those three upgrade tests in an `fs.existsSync` skip; the other 531 checks pass.
-4. `npm test` runs 113 web checks.
+4. `npm test` runs 167 web checks.
 5. `npm run dev` starts a preview on :8080 with a demo day. Every demo user's PIN is 1234.
    - `node tools/shots.js` walks the whole UI (phone) and reports console errors.
-   - `node tools/laptop.js` takes laptop screenshots.
+   - `node tools/laptop.js` takes laptop screenshots. `node tools/check-w12.js` and `node tools/check-w13.js` walk the w1.2 and w1.3 flows (restart the preview before each).
 6. **Video:**
    1. Start the preview.
    2. `node tools/video-shots.js` captures the 2× app screens and the tap targets.
@@ -92,9 +99,12 @@ My next request: <write it here>
 - **app/app.js:**
   - API client `api()`, outbox `queueEntry`/`syncOutbox`
   - views `viewHome`/`viewData`/`viewReport`/`viewMe`
+  - contractor PDF: `pdfImport`, `pdfWait`, `importsCard`, `importSheet`, `importItemSheet`
+  - layers: `openLayer`/`closeLayer`; `whenSettled`/`goHash` wait for our own `history.back()` before pushing (otherwise the history drifts and "back" leaves the app)
   - sheets `addSheet`, `editSheet`, `weatherSheet`, `manpowerSheet`, `pctSheet`, `planSheet`, `matSheet`, `pdfFlow`, `waGen`, `settingsList`, `pinSheet`
 - **backend/src/web.gs:**
   - `WEB_ACTIONS` table: name → [login?, engineer only?, handler]
   - `setup()`, `webUsersSync_`, `webAuth_`
   - `apiSave_` and `webDup_` (the bot's dupCheck_ rule, returning instead of messaging)
   - `apiReport_` (the bot webhook call)
+  - contractor PDFs: `apiPdfUpload_`, `apiPdfRead_`, `webPdfState_`, `webImportsList_`, `apiImport_`, `apiImportSet_`, `apiImportSave_`, `apiImportUndo_`

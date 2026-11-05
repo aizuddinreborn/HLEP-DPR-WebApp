@@ -18,6 +18,8 @@ It works alongside the Telegram "HLEP DPR Bot" and writes into the same Google S
 | Delete a whole activity | own lines | all lines |
 | Duplicate warning after saving (same rule as the bot) | ✅ | ✅ |
 | Create a new system, weather, manpower, add and edit Bahan tiba | ✅ | ✅ |
+| Contractor PDF report: AI keeps the electrical items, tick list, save into the day (same as the bot; lists started in Telegram can be finished here) | ✅ | ✅ |
+| Undo a saved contractor import | own imports | all |
 | Daily PDF (made by the bot, sent to their Telegram, also downloadable here) | ✅ if on Telegram | ✅ |
 | Approve the AI headline, weekly PDF, WhatsApp text, % progress, tomorrow's plan, delete materials, PTW/PIC/time settings, PDF photo limit | – | ✅ |
 
@@ -26,6 +28,7 @@ It works alongside the Telegram "HLEP DPR Bot" and writes into the same Google S
 - The bot's `Code.gs` is never changed. `backend/build.js` copies the functions the web-app needs from the bot's `Code.gs` **unchanged**: Sheet rows, categories, `/semak` rules, the duplicate rule, AI prompts, the WhatsApp builder and headlines. They run inside the web backend's own project, with its own Script properties, cache and lock.
 - Web entries are normal `Entries` rows with `source = web`. `media_group = web:<id>` stops an offline re-send from being saved twice.
 - For **Jana PDF**, the backend posts `/report dd/mm/yyyy` (or `/weekly`) to the bot's own webhook, exactly as if that person had typed it in Telegram. The bot's report engine builds the PDF and sends it to their chat. The app then watches `ReportLog` and offers the download.
+- **Contractor PDFs** use the bot's own reading, tick-list, save and undo functions and its `PdfFiles` and `Imports` tabs, so the duplicate-PDF check covers both sides. PDFs are kept in the bot's `Contractor Reports/yyyy-mm` folder.
 - Only one new tab is added: `WebUsers` (name, role, PIN status). PIN hashes are kept in the backend's Script properties, never in the Sheet.
 - The bot's own code is **not** committed here, because this repo is public. `backend/dist/WebApp.gs` is built locally from the bot's `Code.gs` and is git-ignored.
 
@@ -56,7 +59,7 @@ It works alongside the Telegram "HLEP DPR Bot" and writes into the same Google S
 
 ```bash
 npm install
-npm test           # builds WebApp.gs, then runs the web backend and the bot together (113 checks)
+npm test           # builds WebApp.gs, then runs the web backend and the bot together (167 checks)
 npm run dev        # local preview on http://localhost:8080 with a demo day (PIN 1234)
 ```
 

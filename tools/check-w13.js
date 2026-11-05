@@ -1,0 +1,51 @@
+// w1.3 check (technician, then engineer): contractor PDF → reading → tick list → item editor → save → Hari ini.
+const { chromium } = require('playwright');
+const fs = require('fs');
+const path = require('path');
+(async () => {
+  const pdf = path.join(__dirname, '.cache', 'sci-report.pdf');
+  fs.writeFileSync(pdf, '%PDF-1.4\n% SCI Sdn Bhd daily report (demo)\n%%EOF\n');
+  const b = await chromium.launch();
+  const ctx = await b.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 });
+  const p = await ctx.newPage();
+  const errs = []; p.on('pageerror', (e) => errs.push(e.message)); p.on('console', (m) => { if (m.type() === 'error') errs.push(m.text()); });
+  const out = [];
+  const shot = (n) => p.screenshot({ path: path.join(__dirname, '.cache', 'w13-' + n + '.png') });
+  const login = async (name) => {
+    await p.goto('http://localhost:8080'); await p.waitForSelector('.person');
+    await p.click('.person:has-text("' + name + '")'); for (const k of '1234') await p.click('.pad button[data-k="' + k + '"]');
+    await p.waitForSelector('.stats'); await p.addStyleTag({ content: '#toasts{display:none!important}' }); await p.waitForTimeout(1200);
+  };
+  await login('Ali Firdaus');
+  out.push('home card rows: ' + (await p.$$eval('.imp-card .imp-row', (x) => x.map((r) => r.innerText.replace(/\s+/g, ' ')).join(' | '))));
+  await p.evaluate(() => document.querySelector('.imp-t').scrollIntoView({ block: 'center' })); await shot('home');
+  await p.click('#fab'); await p.waitForSelector('[data-cpdf]'); await p.waitForTimeout(400); await shot('add');
+  const [fc] = await Promise.all([p.waitForEvent('filechooser'), p.click('[data-cpdf]')]);
+  await fc.setFiles(pdf);
+  await p.waitForSelector('.steps li.on:nth-child(2)', { timeout: 15000 }); await p.waitForTimeout(500); await shot('reading');
+  await p.waitForSelector('.imp-it', { timeout: 30000 }); await p.waitForTimeout(500); await shot('list');
+  out.push('list: ' + (await p.$eval('.imp-bar b', (x) => x.textContent)) + ', same-report banner: ' + !!(await p.$('#imb .banner.butter')) + ', merged: ' + (await p.$$('.imp-it .mg')).length);
+  await p.click('.imp-it:nth-of-type(2) [data-itick]'); await p.waitForSelector('#iil'); await p.waitForTimeout(400);
+  out.push('tick without system opens editor: ' + !!(await p.$('#iil')));
+  await p.click('.lay:last-child [data-area="U1"]'); await p.click('.lay:last-child [data-cat="U1_EPS"]'); await p.click('.lay:last-child [data-st="CP"]');
+  await p.waitForTimeout(300); await shot('item');
+  await p.click('.lay:last-child [data-ok]'); await p.waitForFunction(() => document.querySelectorAll('.lay:not(.closing)').length === 1, null, { timeout: 10000 }); await p.waitForTimeout(600);
+  out.push('after item: ' + (await p.$eval('.imp-bar b', (x) => x.textContent)));
+  await p.click('.imp-it:nth-of-type(3) [data-itick]'); await p.waitForTimeout(1200);
+  out.push('after untick 3: ' + (await p.$eval('.imp-bar b', (x) => x.textContent)));
+  await p.click('[data-isave]'); await p.waitForSelector('.res-list', { timeout: 15000 }); await p.waitForTimeout(500); await shot('saved');
+  out.push('result: ' + (await p.$eval('.res-list', (x) => x.innerText.replace(/\s+/g, ' '))));
+  await p.click('[data-goday]'); await p.waitForTimeout(1800);
+  out.push('contractor activities on Hari ini: ' + (await p.$$('.act:has-text("kontraktor")')).length + ', layers open: ' + (await p.$$('.lay:not(.closing)')).length);
+  await p.evaluate(() => { const a = document.querySelector('.act:has(.pill.wait)'); if (a) a.scrollIntoView({ block: 'center' }); }); await shot('home-after');
+  // engineer sees the technician's import as "baru"
+  console.log(out.join('\n'));
+  out.length = 0;
+  await p.goto('http://localhost:8080'); await p.evaluate(() => { localStorage.clear(); });
+  await login('Aizuddin');
+  out.push('engineer card: ' + (await p.$$eval('.imp-card .imp-row', (x) => x.map((r) => r.innerText.replace(/\s+/g, ' ')).join(' | '))) + ' · title: ' + (await p.$eval('.imp-t', (x) => x.innerText.replace(/\s+/g, ' '))));
+  await p.evaluate(() => document.querySelector('.imp-t').scrollIntoView({ block: 'center' })); await shot('eng');
+  await p.click('.imp-row:has(.ic.mint)'); await p.waitForSelector('[data-undo]'); await p.waitForTimeout(400); await shot('done');
+  console.log(out.join('\n') + '\n' + (errs.length ? 'ERRORS: ' + errs.join(' | ') : 'no errors'));
+  await b.close();
+})().catch((e) => { console.error(e); process.exit(1); });

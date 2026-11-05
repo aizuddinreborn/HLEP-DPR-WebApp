@@ -17,7 +17,7 @@
 //  The bot's Code.gs is never changed. This project only adds rows the bot already understands
 //  (source = "web") and one tab of its own, "WebUsers".
 
-const WEB_VERSION = 'w1.2';
+const WEB_VERSION = 'w1.3';
 const WEB_TAB = 'WebUsers';
 const WEB_HEAD = ['user_id', 'name', 'role', 'new_pin', 'pin_set', 'active', 'last_login', 'added_at', 'note'];
 const WEB_TOKEN_DAYS = 30;
@@ -90,7 +90,19 @@ const WEB_ACTIONS = {
   headline: [true, true, function (u, b) { return apiHeadline_(b); }],
   headlineSet: [true, true, function (u, b) { return apiHeadlineSet_(u, b); }],
   settings: [true, true, function (u, b) { return apiSettings_(); }],
-  settingSet: [true, true, function (u, b) { return apiSettingSet_(u, b); }]
+  settingSet: [true, true, function (u, b) { return apiSettingSet_(u, b); }],
+  // contractor PDF reports (w1.3): everyone, as in Telegram
+  pdfUpload: [true, false, function (u, b) { return apiPdfUpload_(u, b); }],
+  pdfRead: [true, false, function (u, b) { return apiPdfRead_(u, b); }],
+  pdfState: [true, false, function (u, b) { return apiPdfState_(b); }],
+  pdfDrop: [true, false, function (u, b) { return apiPdfDrop_(u, b); }],
+  imports: [true, false, function (u, b) { return apiImports_(u); }],
+  import: [true, false, function (u, b) { return apiImport_(u, b); }],
+  importSet: [true, false, function (u, b) { return apiImportSet_(u, b); }],
+  importDate: [true, false, function (u, b) { return apiImportDate_(u, b); }],
+  importSave: [true, false, function (u, b) { return apiImportSave_(u, b); }],
+  importUndo: [true, false, function (u, b) { return apiImportUndo_(u, b); }],
+  importDrop: [true, false, function (u, b) { return apiImportDrop_(u, b); }]
 };
 
 function webRoute_(a, b) {
@@ -346,7 +358,7 @@ function apiMeta_(u) {
     cats: cats.map(webCatOut_), scopes: scopes,
     status: [{ key: 'NS', label: STATUS_LABEL.NS }, { key: 'IP', label: STATUS_LABEL.IP }, { key: 'CP', label: STATUS_LABEL.CP }],
     weather: String(setting_('WEATHER_OPTIONS') || 'Sunny, Clear, Cloudy, Rainy, Hazy').split(',').map(function (s) { return s.trim(); }).filter(String),
-    ai: aiOn_(), pdf: !!(prop_('BOT_WEBAPP_URL') && prop_('BOT_WEBHOOK_SECRET')),
+    ai: aiOn_(), pdf: !!(prop_('BOT_WEBAPP_URL') && prop_('BOT_WEBHOOK_SECRET')), pdfImport: aiOn_(),
     maxPhotos: MAX_PHOTOS, pdfPhotos: photosPerActivity_(settings_()),
     headlineAi: String(setting_('HEADLINE_AI') || 'Y').toUpperCase() !== 'N'
   };
@@ -387,7 +399,8 @@ function apiDay_(u, b) {
     }),
     materials: d.materials.filter(function (m) { return m.arrived_date && m.arrived_date <= date; })
       .sort(function (a, b2) { return a.arrived_date < b2.arrived_date ? 1 : -1; })
-      .map(function (m) { return { row: m._row, area: m.area, cat: m.category_key, label: label(m.category_key), item: m.item, date: m.arrived_date }; })
+      .map(function (m) { return { row: m._row, area: m.area, cat: m.category_key, label: label(m.category_key), item: m.item, date: m.arrived_date }; }),
+    imports: webImportsList_(u)
   };
 }
 
@@ -870,6 +883,349 @@ function apiSettingSet_(u, b) {
     if (/^PTW_U[14]$/.test(key)) snapshotPtw_(u.name);     // dated PTW history for /weekly, as the bot does
   });
   return { key: key, value: v };
+}
+
+// ---------- contractor PDF reports (w1.3): the bot's own reading, tick list and save ----------
+//
+//  Same rows as the bot: the PDF goes to Drive "Contractor Reports/yyyy-mm", one PdfFiles row, then the bot's
+//  analyzePdf_ (same AI prompt: electrical items only), writeImport_ (Imports tab, one row per item) and findMerges_.
+//  Ticking, saving (saveImport_), throwing away (discardImport_) and undo (undoImport_) are the bot's functions too,
+//  so a list started in Telegram can be finished here. The bot reads PDFs in a background trigger because Telegram
+//  will not wait; the web-app simply waits for the read (up to Apps Script's 6 minutes) and the app polls meanwhile.
+//  While a PDF is being read its id sits in this project's JOBS property, which the bot's pdfSeen_ reads as "reading".
+
+const WEB_MAX_PDF = 20 * 1024 * 1024;       // same limit as the bot (Telegram's download limit)
+const WEB_READ_MS = 7 * 60 * 1000;          // a read not finished by then was cut off
+
+function webReadingIds_() {
+  const p = PropertiesService.getScriptProperties();
+  const now = Date.now();
+  return JSON.parse(p.getProperty('JOBS') || '[]').filter(function (id) {
+    const t = Number(p.getProperty('wr_' + id) || 0);
+    return t && now - t < WEB_READ_MS;
+  });
+}
+
+/** Marks a PDF as being read (or not). Call inside the lock. */
+function webReadingSet_(id, on) {
+  const p = PropertiesService.getScriptProperties();
+  const fresh = webReadingIds_();
+  JSON.parse(p.getProperty('JOBS') || '[]').forEach(function (x) { if (fresh.indexOf(x) < 0) p.deleteProperty('wr_' + x); });
+  const q = fresh.filter(function (x) { return x !== id; });
+  if (on) { q.push(id); p.setProperty('wr_' + id, String(Date.now())); } else p.deleteProperty('wr_' + id);
+  p.setProperty('JOBS', JSON.stringify(q));
+}
+
+function webPdfRow_(id) {
+  return rows_('PdfFiles').filter(function (x) { return x.import_id === String(id || ''); })[0] || null;
+}
+
+function webSeenOut_(r) {
+  return { id: r.import_id, by: r.by, at: whenShort_(r.at), st: r.st, contractor: r.contractor || '',
+    date: r.report_date ? dmyLong_(r.report_date) : '' };
+}
+
+function apiPdfUpload_(u, b) {
+  if (!aiOn_()) throw webErr_('Membaca PDF perlukan AI (GEMINI_API_KEY dalam Script properties web-app).', 'noai');
+  let name = String(b.name || '').replace(/[\\\/:*?"<>|\r\n]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120) || 'contractor-report.pdf';
+  if (!/\.pdf$/i.test(name)) name += '.pdf';
+  let bytes;
+  try { bytes = Utilities.base64Decode(String(b.b64 || '')); } catch (e) { throw webErr_('PDF rosak semasa dihantar. Cuba lagi.'); }
+  if (!bytes.length) throw webErr_('PDF kosong.');
+  if (bytes.length > WEB_MAX_PDF) throw webErr_('PDF lebih 20 MB. Sila kecilkan (compress) atau pecahkan PDF.');
+  let isPdf = false;
+  for (let i = 0; i + 3 < Math.min(bytes.length, 1024) && !isPdf; i++) {
+    isPdf = bytes[i] === 37 && bytes[i + 1] === 80 && bytes[i + 2] === 68 && bytes[i + 3] === 70;     // "%PDF"
+  }
+  if (!isPdf) throw webErr_('Ini bukan fail PDF.');
+  const blob = Utilities.newBlob(bytes, 'application/pdf', name);
+  const id = 'R' + Utilities.formatDate(new Date(), TZ, 'yyMMddHHmmss') + Utilities.getUuid().replace(/-/g, '').slice(0, 4).toUpperCase();
+  const hash = md5Hex_(blob.getBytes());
+  // the same file sent before (by anyone, in Telegram or here) is not read again, so its activities are not doubled
+  const seen = withLock_(function () {
+    const s = pdfSeen_(hash, '');
+    if (!s) {
+      appendRow_('PdfFiles', { import_id: id, file_hash: hash, tg_unique: '', file_name: name, file_link: '', contractor: '',
+        report_date: '', by: u.name, by_id: String(u.user_id), at: nowStr_(), state: 'queued' });
+      webReadingSet_(id, true);
+    }
+    return s;
+  });
+  if (seen) return { seen: webSeenOut_(seen) };
+  try {
+    const folder = withLock_(function () { return contractorFolder_(); });
+    const file = folder.createFile(blob);
+    withLock_(function () { pdfRowSet_(id, { file_link: file.getUrl() }); });
+  } catch (err) {
+    logErr_('web pdf save', err);
+    withLock_(function () { pdfRowSet_(id, { state: 'failed' }); webReadingSet_(id, false); });
+    throw webErr_('Gagal simpan PDF dalam Google Drive. Cuba lagi.');
+  }
+  return { id: id };
+}
+
+/** Reads the PDF (1–3 minutes). The app does not rely on this reply: it polls pdfState meanwhile. */
+function apiPdfRead_(u, b) {
+  const id = String(b.id || '');
+  const cache = CacheService.getScriptCache();
+  const go = withLock_(function () {
+    const r = webPdfRow_(id);
+    if (!r) throw webErr_('PDF tidak dijumpai.');
+    if (cache.get('rd_' + id)) return false;                             // already being read by another request
+    if (importRows_(id).length || r.state === 'none') return false;       // already read
+    if (r.state !== 'queued' && r.state !== 'failed') throw webErr_('PDF ini sudah dibuang. Hantar semula.');
+    if (!/\/d\/[A-Za-z0-9_-]{10,}/.test(String(r.file_link))) throw webErr_('PDF belum disimpan. Hantar semula.');
+    cache.put('rd_' + id, '1', 420);
+    if (r.state === 'failed') pdfRowSet_(id, { state: 'queued' });
+    webReadingSet_(id, true);
+    return true;
+  });
+  if (!go) return webPdfState_(id);
+  const row = webPdfRow_(id);
+  const job = { id: id, fileId: String(row.file_link).match(/\/d\/([A-Za-z0-9_-]{10,})/)[1], name: row.file_name, url: row.file_link, by: row.by };
+  let res = null;
+  try { res = analyzePdf_(job); } catch (err) { logErr_('web analyzePdf', err); }
+  try {
+    if (!res) {
+      withLock_(function () { pdfRowSet_(id, { state: 'failed' }); webReadingSet_(id, false); });
+      return { state: 'failed', why: truncate_(prop_('AI_LAST_ERR') || '', 160) };
+    }
+    withLock_(function () {
+      const now = webPdfRow_(id);
+      if (now && now.state === 'queued') {
+        if (!res.items.length) pdfRowSet_(id, { state: 'none', contractor: res.contractor || '', report_date: res.date || '' });
+        else {
+          writeImport_(job, res);
+          pdfRowSet_(id, { state: 'read', contractor: res.contractor || '', report_date: res.date || '' });
+        }
+      }
+      webReadingSet_(id, false);
+    });
+    if (res.items.length && res.date) { try { findMerges_(id); } catch (err) { logErr_('web findMerges', err); } }
+  } finally {
+    cache.remove('rd_' + id);
+  }
+  const out = webPdfState_(id);
+  out.skipped = res.skipped || 0;
+  out.n = res.items.length;
+  return out;
+}
+
+/** reading · review (tick list waiting) · saved · none (no electrical items) · failed · gone */
+function webPdfState_(id) {
+  const r = webPdfRow_(id);
+  if (!r) return { state: 'gone', id: id };
+  const base = { id: id, name: r.file_name, contractor: r.contractor || '' };
+  if (webReadingIds_().indexOf(id) >= 0) return Object.assign(base, { state: 'reading' });
+  if (r.state === 'none') return Object.assign(base, { state: 'none' });
+  const its = importRows_(id);
+  if (its.some(function (i) { return i.state === 'pending'; })) return Object.assign(base, { state: 'review' });
+  if (its.some(function (i) { return i.state === 'saved'; })) return Object.assign(base, { state: 'saved' });
+  if (r.state === 'queued' || r.state === 'failed') return Object.assign(base, { state: 'failed', why: truncate_(prop_('AI_LAST_ERR') || '', 160) });
+  return Object.assign(base, { state: 'gone' });
+}
+
+function apiPdfState_(b) { return webPdfState_(String(b.id || '')); }
+
+/** A PDF that could not be read: hide it from the list (the file stays in Drive). */
+function apiPdfDrop_(u, b) {
+  const id = String(b.id || '');
+  withLock_(function () {
+    const r = webPdfRow_(id);
+    if (!r || importRows_(id).length || webReadingIds_().indexOf(id) >= 0) throw webErr_('Tidak boleh dibuang sekarang.');
+    if (String(r.by_id) !== String(u.user_id) && !isEng_(u)) throw webErr_('Hanya penghantar PDF atau engineer.');
+    pdfRowSet_(id, { state: 'dropped' });
+  });
+  return {};
+}
+
+/** Who saved an import: the reporter on its new contractor lines (merged lines keep the original reporter). */
+function webImportSaver_(items, byId) {
+  for (let i = 0; i < items.length; i++) {
+    const e = items[i].state === 'saved' ? byId[String(items[i].saved_entry)] : null;
+    if (e && e.source === 'contractor') return { uid: String(e.user_id), name: String(e.reporter), at: String(e.received_at) };
+  }
+  for (let i = 0; i < items.length; i++) {
+    const se = String(items[i].saved_entry || '');
+    if (items[i].state === 'saved' && /^PLAN@/.test(se)) return { uid: '', name: '', at: se.slice(5) };
+  }
+  return { uid: '', name: '', at: '' };
+}
+
+/** The Hari ini card: PDFs being read, mine that failed, tick lists waiting (Telegram or web), lists saved in the last 2 days. */
+function webImportsList_(u) {
+  const reading = webReadingIds_();
+  const since = addDays_(today_(), -2);
+  const out = { reading: [], failed: [], pending: [], done: [] };
+  const groups = {};
+  rows_('Imports').forEach(function (r) { (groups[r.import_id] = groups[r.import_id] || []).push(r); });
+  rows_('PdfFiles').forEach(function (r) {
+    if (reading.indexOf(r.import_id) >= 0) out.reading.push({ id: r.import_id, name: r.file_name, by: r.by, at: r.at });
+    else if (!groups[r.import_id] && (r.state === 'failed' || (r.state === 'queued' && !r.tg_unique)) && String(r.by_id) === String(u.user_id) &&
+      String(r.at).slice(0, 10) >= since) out.failed.push({ id: r.import_id, name: r.file_name, at: r.at });
+  });
+  let byId = null;
+  Object.keys(groups).forEach(function (id) {
+    const its = groups[id];
+    const h = its[0];
+    const head = { id: id, contractor: h.contractor || '', name: h.file_name, date: h.report_date || '', by: h.created_by, at: h.created_at };
+    const pend = its.filter(function (r) { return r.state === 'pending'; });
+    if (pend.length) {
+      out.pending.push(Object.assign(head, { n: pend.length, picked: pend.filter(function (r) { return r.picked === 'Y'; }).length }));
+      return;
+    }
+    const saved = its.filter(function (r) { return r.state === 'saved'; });
+    if (!saved.length) return;
+    if (!byId) { byId = {}; rows_('Entries').forEach(function (e) { byId[e.entry_id] = e; }); }
+    const s = webImportSaver_(its, byId);
+    if (String(s.at || h.created_at).slice(0, 10) < since) return;
+    const su = s.uid ? webUser_(s.uid) : null;
+    out.done.push(Object.assign(head, { n: saved.length, savedBy: s.name, savedAt: s.at, savedByEng: !!(su && isEng_(su)) }));
+  });
+  const newest = function (a, c) { return String(a.savedAt || a.at) < String(c.savedAt || c.at) ? 1 : -1; };
+  out.pending.sort(newest);
+  out.done.sort(newest);
+  return out;
+}
+
+function apiImports_(u) { return webImportsList_(u); }
+
+/** One tick list, as the app shows it. */
+function apiImport_(u, b) {
+  const id = String(b.id || '');
+  const items = importRows_(id);
+  if (!items.length) throw webErr_('Senarai ini tiada lagi.', 'gone');
+  const h = items[0];
+  const head = { id: id, contractor: h.contractor || '', name: h.file_name, link: h.file_link, date: h.report_date || '', by: h.created_by, at: h.created_at };
+  const pending = items.filter(function (r) { return r.state === 'pending'; });
+  const entries = rows_('Entries');
+  const byId = {};
+  entries.forEach(function (e) { byId[e.entry_id] = e; });
+  if (!pending.length) {
+    const saved = items.filter(function (r) { return r.state === 'saved'; });
+    const s = webImportSaver_(items, byId);
+    return { head: head, done: true, saved: saved.length, undone: items.filter(function (r) { return r.state === 'undone'; }).length,
+      savedBy: s.name, canUndo: saved.length > 0 && (isEng_(u) || (s.uid ? s.uid === String(u.user_id) : h.created_by === u.name)) };
+  }
+  const same = head.date ? pdfSameReport_(id, head.contractor, head.date) : null;
+  return {
+    head: head, done: false,
+    canDrop: isEng_(u) || h.created_by === u.name,
+    same: same ? webSeenOut_(same) : null,
+    items: pending.map(function (r) {
+      const c = r.category_key ? cat_(r.category_key) : null;
+      const ex = r.merge_entry ? byId[r.merge_entry] : null;
+      return { n: Number(r.item_no), kind: r.kind === 'plan' ? 'plan' : 'today', area: c ? c.area : (r.area === 'U4' ? 'U4' : 'U1'),
+        cat: c ? c.key : '', catLabel: c ? shortCat_(c) : '', status: r.status, shift: r.shift === 'N' ? 'N' : 'D',
+        line: finalLine_(r), merged: !!(r.merge_entry && r.merged_text), mergeWith: ex ? String(ex.activity_text) : String(r.merge_entry || ''),
+        source: r.source_text || '', page: r.page || '', picked: r.picked === 'Y' };
+    })
+  };
+}
+
+/**
+ * Changes on a tick list, with the bot's rules (importCb_ / importText_):
+ *   patch.all = true/false ticks every item that has a system / none;
+ *   for one item (n): picked, cat (also sets the area and selects it), status, shift, kind (today | plan), unmerge, line.
+ * A new system or kind, or "unmerge", drops the merged line. A new line edits the merged line when there is one.
+ */
+function apiImportSet_(u, b) {
+  const id = String(b.id || '');
+  const p = b.patch || {};
+  withLock_(function () {
+    const all = importRows_(id).filter(function (r) { return r.state === 'pending'; });
+    if (!all.length) throw webErr_('Senarai ini sudah selesai.', 'gone');
+    if (p.all !== undefined) {
+      const on = !!p.all;
+      const ch = all.filter(function (x) { return x.picked !== (on && x.category_key ? 'Y' : 'N'); });
+      ch.forEach(function (x) { x.picked = on && x.category_key ? 'Y' : 'N'; });
+      writeBack_('Imports', ch);
+      return;
+    }
+    const r = all.filter(function (x) { return Number(x.item_no) === Number(b.n); })[0];
+    if (!r) throw webErr_('Item tidak dijumpai.');
+    const set = function (col, v) { if (String(r[col]) !== String(v)) { setCell_('Imports', r._row, col, v); r[col] = v; } };
+    const unmerge = function () { if (r.merge_entry || r.merged_text) { set('merge_entry', ''); set('merged_text', ''); } };
+    if (p.kind !== undefined) {
+      if (!/^(today|plan)$/.test(p.kind)) throw webErr_('Jenis tidak sah.');
+      if (r.kind !== p.kind) { set('kind', p.kind); unmerge(); }
+    }
+    if (p.cat !== undefined) {
+      const c = cat_(String(p.cat));
+      if (!c) throw webErr_('Sistem tidak dijumpai.');
+      if (c.key !== r.category_key) { set('category_key', c.key); set('area', c.area); unmerge(); }
+      set('picked', 'Y');
+    }
+    if (p.status !== undefined) { if (!/^(NS|IP|CP)$/.test(p.status)) throw webErr_('Status tidak sah.'); set('status', p.status); }
+    if (p.shift !== undefined) { if (!/^[DN]$/.test(p.shift)) throw webErr_('Syif tidak sah.'); set('shift', p.shift); }
+    if (p.unmerge) unmerge();
+    if (p.line !== undefined && String(p.line).trim() !== finalLine_(r)) {
+      const line = cleanLine_(String(p.line));
+      if (!line) throw webErr_('Sila tulis ayat.');
+      set(r.merge_entry && r.merged_text ? 'merged_text' : 'line', truncate_(line, 400));
+      if (r.category_key) set('picked', 'Y');
+    }
+    if (p.picked !== undefined) {
+      if (p.picked && !r.category_key) throw webErr_('Pilih sistem dahulu.', 'nocat');
+      set('picked', p.picked ? 'Y' : 'N');
+    }
+  });
+  return apiImport_(u, b);
+}
+
+/** The report date (when the AI found none, or found the wrong one); merges are looked for again. */
+function apiImportDate_(u, b) {
+  const id = String(b.id || '');
+  const ymd = webDate_(b.date);
+  if (ymd < addDays_(today_(), -366)) throw webErr_('Tarikh terlalu lama.');
+  withLock_(function () {
+    const ch = importRows_(id).filter(function (r) { return r.state === 'pending' && r.report_date !== ymd; });
+    ch.forEach(function (r) { r.report_date = ymd; });
+    writeBack_('Imports', ch);
+    pdfRowSet_(id, { report_date: ymd });
+  });
+  try { findMerges_(id); } catch (err) { logErr_('web findMerges', err); }
+  return apiImport_(u, b);
+}
+
+function apiImportSave_(u, b) {
+  const id = String(b.id || '');
+  const before = importRows_(id).filter(function (r) { return r.state === 'pending'; });
+  if (!before.length) throw webErr_('Senarai ini sudah selesai.', 'gone');
+  if (!before[0].report_date) throw webErr_('Tetapkan tarikh laporan dahulu.', 'nodate');
+  saveImport_(String(u.user_id), u, null, null, id);       // the bot's own save: entries, merges, plans
+  const nos = {};
+  before.forEach(function (r) { nos[r.item_no] = 1; });
+  const byId = {};
+  rows_('Entries').forEach(function (e) { byId[e.entry_id] = e; });
+  const res = { date: before[0].report_date, contractor: before[0].contractor || '', nE: 0, nM: 0, nP: 0, nD: 0 };
+  importRows_(id).filter(function (r) { return nos[r.item_no]; }).forEach(function (r) {
+    if (r.state === 'dropped') res.nD++;
+    else if (r.state === 'saved' && /^PLAN@/.test(String(r.saved_entry))) res.nP++;
+    else if (r.state === 'saved') { const e = byId[r.saved_entry]; if (e && e.source === 'merged') res.nM++; else res.nE++; }
+  });
+  if (!res.nE && !res.nM && !res.nP && !res.nD) throw webErr_('Tidak disimpan. Cuba lagi.');
+  return res;
+}
+
+function apiImportUndo_(u, b) {
+  const id = String(b.id || '');
+  const info = apiImport_(u, b);
+  if (!info.done || !info.saved) throw webErr_('Tiada apa untuk dibatalkan.');
+  if (!info.canUndo) throw webErr_('Hanya orang yang menyimpan import ini atau engineer boleh membatalkannya.');
+  undoImport_(u, null, null, id);                              // the bot's own undo: entries out, merged originals back
+  const left = importRows_(id).filter(function (r) { return r.state === 'saved'; }).length;
+  if (left) throw webErr_('Satu entri dari import ini sudah digabung oleh import lain. Batalkan import itu dahulu.');
+  return { n: info.saved };
+}
+
+function apiImportDrop_(u, b) {
+  const id = String(b.id || '');
+  const info = apiImport_(u, b);
+  if (info.done) throw webErr_('Senarai ini sudah selesai.', 'gone');
+  if (!info.canDrop) throw webErr_('Hanya penghantar PDF atau engineer boleh membuang senarai ini.');
+  discardImport_(String(u.user_id), null, null, id);
+  return {};
 }
 
 // ---------- Telegram: the web-app never talks to Telegram itself ----------

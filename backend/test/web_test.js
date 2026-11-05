@@ -292,6 +292,164 @@ section('w1.2 · Bahan tiba: everyone adds and edits, engineer deletes');
   ok(W.msgsTo('111').filter((m) => /^<pre>/.test(m.text)).slice(-2).some((m) => /Cable ladder 300 mm \(galvanised\) ✅ (- )?9\/10\/26/.test(strip(m.text))), 'bot WhatsApp text shows the edited material');
 }
 
+section('w1.3 · contractor PDF → AI (electrical only) → tick list → report');
+{
+  const T3 = api('login', { id: '222', pin: '1234' }).token;
+  const E3 = api('login', { id: '111', pin: '4321' }).token;
+  const ITEMS = [
+    { category: 'U1_EPS', area: 'U1', status: 'IP', shift: 'D', kind: 'today', line: 'Installation of battery racks in the battery room is ongoing (2 of 4 racks).', source: 'Batt rack installation 2/4 nos', page: 2 },
+    { category: '', area: 'U1', status: 'IP', shift: 'D', kind: 'today', line: 'Installation of lighting fixtures at the intake area is ongoing.', source: 'Lighting fixture install at intake', page: 2 },
+    { category: 'U4_MS_GEN', area: 'U4', status: 'CP', shift: 'N', kind: 'today', line: 'Removed the top half bearing (DE).', source: 'Night: remove top half brg DE - done', page: 3 },
+    { category: 'U1_FIRE', area: 'U1', status: 'NS', shift: 'D', kind: 'tomorrow', line: 'Function test of the fire pump control panel.', source: 'Tomorrow: FT fire pump CP', page: 4 },
+    { category: 'U1_PHCRANE', area: 'U1', status: 'CP', shift: 'D', kind: 'today', line: 'Load test of the powerhouse crane completed.', source: 'PH crane load test OK', page: 5 }
+  ];
+  let mode = 'normal';
+  const base = env.gemini.responder;
+  env.gemini.responder = (body) => {
+    const parts = body.contents[0].parts;
+    const txt = parts.filter((p) => p.text).map((p) => p.text).join('\n');
+    if (parts.some((p) => p.inlineData && p.inlineData.mimeType === 'application/pdf')) {
+      if (!/ELECTRICAL scope/.test(txt)) throw new Error('not the bot PDF prompt');
+      if (mode === 'empty') return JSON.stringify({ report_date: '2026-10-07', contractor: 'Civil Co', items: [], skipped_non_electrical: 12 });
+      if (mode === 'nodate') return JSON.stringify({ report_date: '', contractor: 'KEM LETRIK', items: ITEMS.slice(4), skipped_non_electrical: 0 });
+      if (mode === 'junk') return 'Sorry, I cannot read this.';
+      return JSON.stringify({ report_date: '2026-10-07', contractor: 'SCI Sdn Bhd', items: ITEMS, skipped_non_electrical: 9 });
+    }
+    if (/EXISTING lines/.test(txt)) {
+      const ex = txt.split('NEW lines')[0].split('\n').filter((l) => / \| U1_EPS \| /.test(l));
+      return JSON.stringify({ merges: ex.length ? [{ new: 1, existing: ex[0].split(' | ')[0].trim(), merged: 'Installation of battery racks inside the battery room is ongoing (2 of 4 racks installed).' }] : [] });
+    }
+    return base(body);
+  };
+  const pdfB64 = (tag) => Buffer.from('%PDF-1.4\n' + tag + '\n%%EOF').toString('base64');
+  // a technician line for the same day: the contractor's battery-rack item merges with it
+  const tech = api('save', { t: T3, cid: cid(), date: '07/10/2026', area: 'U1', cat: 'U1_EPS', status: 'IP', shift: 'D', text: 'Installed battery racks inside the battery room.' });
+  ok(tech.ok, 'technician line saved for 07/10');
+
+  ok(api('meta', { t: T3 }).pdfImport === true, 'meta: PDF import on (AI key present)');
+  r = api('pdfUpload', { t: T3, name: 'notes.pdf', b64: Buffer.from('hello, not a pdf').toString('base64') });
+  ok(!r.ok && /bukan fail PDF/.test(r.err), 'a file that is not a PDF is refused');
+  r = api('pdfUpload', { t: T3, name: 'huge.pdf', b64: Buffer.concat([Buffer.from('%PDF-1.4\n'), Buffer.alloc(21 * 1024 * 1024)]).toString('base64') });
+  ok(!r.ok && /lebih 20 MB/.test(r.err), 'over 20 MB refused, as in Telegram');
+
+  r = api('pdfUpload', { t: T3, name: 'SCI DPR 07-10-2026.pdf', b64: pdfB64('SCI daily') });
+  ok(r.ok && /^R\d{12}[A-Z0-9]{4}$/.test(r.id), 'PDF uploaded → import id like the bot\'s');
+  const id = r.id;
+  let pf = rows('PdfFiles').find((x) => x.import_id === id);
+  const file = Object.values(env.files).find((f) => f._name === 'SCI DPR 07-10-2026.pdf');
+  ok(pf && pf.state === 'queued' && pf.by === 'Ali Firdaus' && pf.by_id === '222' && pf.file_link === file.getUrl() && /^[a-f0-9]{32}$/.test(pf.file_hash), 'PdfFiles row: queued, who, link, file hash');
+  ok(env.folders[file._parent]._name === '2026-10' && env.folders[env.folders[file._parent]._parent]._name === 'Contractor Reports' && env.folders[env.folders[file._parent]._parent]._id === env.props.CONTRACTOR_FOLDER_ID,
+    'PDF kept in the bot\'s own Contractor Reports/2026-10 folder');
+  ok(api('pdfState', { t: T3, id }).state === 'reading' && api('imports', { t: E3 }).reading.some((x) => x.id === id), 'shown as "being read" (to everyone)');
+  r = api('pdfUpload', { t: E3, name: 'copy.pdf', b64: pdfB64('SCI daily') });
+  ok(r.ok && r.seen && r.seen.st === 'reading' && r.seen.by === 'Ali Firdaus', 'same file again while it is read → "sudah dihantar, sedang dibaca"');
+
+  r = api('pdfRead', { t: T3, id });
+  ok(r.ok && r.state === 'review' && r.n === 5 && r.skipped === 9, 'read: 5 electrical items, 9 non-electrical skipped');
+  ok(env.gemini.calls.some((c) => c.model === 'gemini-flash-latest' && c.body.contents[0].parts.some((p) => p.inlineData && p.inlineData.mimeType === 'application/pdf')), 'read with the bot\'s PDF model and prompt');
+  ok(W.sep.props.JOBS === '[]' && !Object.keys(W.sep.props).some((k) => /^wr_/.test(k)), '"reading" mark cleared');
+  ok(api('pdfRead', { t: T3, id }).state === 'review' && rows('Imports').filter((x) => x.import_id === id).length === 5, 'reading again does not double the list');
+  pf = rows('PdfFiles').find((x) => x.import_id === id);
+  ok(pf.state === 'read' && pf.contractor === 'SCI Sdn Bhd' && pf.report_date === '2026-10-07', 'PdfFiles: read, contractor, report date');
+  const hit = W.botExec(() => W.bot.pdfSeen_(pf.file_hash, ''));
+  ok(hit && hit.st === 'review', 'the bot sees this PDF as already sent (its own duplicate check)');
+  r = api('pdfUpload', { t: E3, name: 'again.pdf', b64: pdfB64('SCI daily') });
+  ok(r.seen && r.seen.st === 'review' && r.seen.id === id, 'same file in the web-app → points to the open list');
+
+  let L = api('import', { t: T3, id });
+  ok(L.ok && !L.done && L.head.contractor === 'SCI Sdn Bhd' && L.head.date === '2026-10-07' && L.items.length === 5 && L.canDrop, 'tick list: header and 5 items');
+  ok(L.items.filter((i) => i.picked).length === 4 && !L.items[1].picked && L.items[1].cat === '', 'items with a system are ticked; the one without is not');
+  ok(L.items[0].merged && /2 of 4 racks installed/.test(L.items[0].line) && /Installed battery racks/.test(L.items[0].mergeWith), 'item 1 merged with the technician line of that day');
+  ok(L.items[3].kind === 'plan' && L.items[2].shift === 'N' && L.items[2].source === 'Night: remove top half brg DE - done' && Number(L.items[2].page) === 3, 'plan item, night shift, contractor words and page');
+  r = api('importSet', { t: T3, id, n: 2, patch: { picked: true } });
+  ok(!r.ok && r.code === 'nocat', 'ticking an item with no system → choose a system first');
+  L = api('importSet', { t: T3, id, n: 2, patch: { cat: 'U1_EPS', status: 'CP' } });
+  ok(L.items[1].picked && L.items[1].cat === 'U1_EPS' && L.items[1].area === 'U1' && L.items[1].status === 'CP', 'system chosen → ticked; status changed');
+  L = api('importSet', { t: T3, id, n: 1, patch: { line: 'Installation of battery racks inside the battery room is ongoing (2 of 4 racks installed, anchoring done).' } });
+  ok(rows('Imports').find((x) => x.import_id === id && Number(x.item_no) === 1).merged_text.indexOf('anchoring done') > 0 && L.items[0].merged, 'editing a merged item edits the merged line');
+  L = api('importSet', { t: T3, id, n: 3, patch: { picked: false } });
+  ok(!L.items[2].picked, 'item 3 unticked');
+  L = api('importSet', { t: T3, id, patch: { all: false } });
+  ok(L.items.every((i) => !i.picked), '"Tiada" unticks all');
+  L = api('importSet', { t: T3, id, patch: { all: true } });
+  ok(L.items.every((i) => i.picked), '"Semua" ticks all (every item now has a system)');
+  L = api('importSet', { t: T3, id, n: 3, patch: { picked: false } });
+
+  r = api('importSave', { t: T3, id });
+  ok(r.ok && r.nE === 2 && r.nM === 1 && r.nP === 1 && r.nD === 1 && r.date === '2026-10-07', 'saved: 2 new, 1 merged, 1 plan, 1 not ticked');
+  const ents = rows('Entries');
+  const contr = ents.filter((e) => e.source === 'contractor' && e.work_date === '2026-10-07');
+  ok(contr.length === 2 && contr.every((e) => e.reporter === 'Ali Firdaus' && e.user_id === '222' && e.backdated === 'Y' && /^SCI Sdn Bhd · SCI DPR 07-10-2026\.pdf p\d · R/.test(e.source_ref)), 'contractor lines: reporter, backdated, source_ref (bot format)');
+  ok(ents.find((e) => e.entry_id === tech.id).deleted === 'M' && ents.some((e) => e.source === 'merged' && /anchoring done/.test(e.activity_text)), 'technician line hidden as merged; merged line added');
+  ok(rows('Plans').some((p) => p.plan_date === '2026-10-08' && /fire pump/.test(p.text) && /SCI Sdn Bhd report/.test(p.added_by)), 'plan saved for 08/10');
+  ok(api('import', { t: T3, id }).done && api('import', { t: T3, id }).canUndo, 'list now "selesai", with undo');
+  let IM = api('imports', { t: E3 });
+  const dn = IM.done.find((x) => x.id === id);
+  ok(dn && dn.savedBy === 'Ali Firdaus' && !dn.savedByEng && dn.n === 4 && !IM.pending.some((x) => x.id === id), 'engineer\'s Hari ini: "Ali saved SCI" notice');
+  const d7 = api('day', { t: E3, date: '07/10/2026' });
+  ok(d7.entries.some((e) => e.src === 'contractor' && /powerhouse crane/.test(e.text)) && d7.imports && Array.isArray(d7.imports.done), 'day view lists the contractor lines (and the import card data)');
+  W.say('111', '/today 07/10/2026');
+  ok(W.msgsTo('111').filter((m) => /^<pre>/.test(m.text)).slice(-2).some((m) => /Load test of the powerhouse crane completed\./.test(strip(m.text))), 'bot WhatsApp text has the contractor line');
+
+  r = api('importUndo', { t: E3, id });
+  const ents2 = rows('Entries');
+  ok(r.ok && r.n === 4 && ents2.find((e) => e.entry_id === tech.id).deleted === '' && ents2.filter((e) => e.source_ref.indexOf(id) >= 0 && e.deleted !== 'Y').length === 0, 'engineer undoes the import: lines out, technician line back');
+  ok(!api('importUndo', { t: E3, id }).ok, 'nothing left to undo');
+
+  // no date in the report → asked for it
+  mode = 'nodate';
+  const id2 = api('pdfUpload', { t: E3, name: 'KEM LETRIK daily.pdf', b64: pdfB64('KEM') }).id;
+  r = api('pdfRead', { t: E3, id: id2 });
+  ok(r.state === 'review' && api('import', { t: E3, id: id2 }).head.date === '', 'report without a date → list without a date');
+  r = api('importSave', { t: E3, id: id2 });
+  ok(!r.ok && r.code === 'nodate', 'save asks for the report date');
+  ok(!api('importDate', { t: E3, id: id2, date: '11/10/2026' }).ok, 'future report date refused');
+  L = api('importDate', { t: E3, id: id2, date: '06/10/2026' });
+  ok(L.head.date === '2026-10-06', 'date set');
+  r = api('importSave', { t: E3, id: id2 });
+  ok(r.ok && r.nE === 1 && rows('Entries').some((e) => e.work_date === '2026-10-06' && /powerhouse crane/.test(e.activity_text) && e.source === 'contractor'), 'saved on 06/10');
+
+  // no electrical items; unreadable; retry; throw away
+  mode = 'empty';
+  const id3 = api('pdfUpload', { t: T3, name: 'civil only.pdf', b64: pdfB64('civil') }).id;
+  r = api('pdfRead', { t: T3, id: id3 });
+  ok(r.state === 'none' && rows('PdfFiles').find((x) => x.import_id === id3).state === 'none', 'civil-only report → "tiada item elektrik"');
+  mode = 'junk';
+  const id4 = api('pdfUpload', { t: T3, name: 'scan.pdf', b64: pdfB64('scan') }).id;
+  r = api('pdfRead', { t: T3, id: id4 });
+  ok(r.state === 'failed' && api('imports', { t: T3 }).failed.some((x) => x.id === id4) && !api('imports', { t: E3 }).failed.some((x) => x.id === id4), 'unreadable → "gagal" card for the sender only');
+  ok(!W.botExec(() => W.bot.pdfSeen_(rows('PdfFiles').find((x) => x.import_id === id4).file_hash, '')), 'a failed read does not block sending it again (bot rule)');
+  mode = 'normal';
+  r = api('pdfRead', { t: T3, id: id4 });
+  ok(r.state === 'review', '"Cuba lagi" reads it again');
+  ok(api('importDrop', { t: T3, id: id4 }).ok && rows('Imports').filter((x) => x.import_id === id4).every((x) => x.state === 'dropped') && api('pdfState', { t: T3, id: id4 }).state === 'gone', '"Buang senarai" → nothing saved');
+  mode = 'junk';
+  const id5 = api('pdfUpload', { t: T3, name: 'scan2.pdf', b64: pdfB64('scan2') }).id;
+  api('pdfRead', { t: T3, id: id5 });
+  ok(api('pdfDrop', { t: E3, id: id5 }).ok && rows('PdfFiles').find((x) => x.import_id === id5).state === 'dropped' && !api('imports', { t: T3 }).failed.some((x) => x.id === id5), 'a failed PDF can be hidden');
+  mode = 'normal';
+
+  // a list started in Telegram is finished in the web-app
+  W.botPost({ message: { message_id: 991, from: { id: 222, first_name: 'Ali', last_name: 'Firdaus', username: 'alifirdaus' }, chat: { id: 222, type: 'private' }, date: Math.floor(env.clock.get() / 1000),
+    document: { file_id: 'PDFTG1', file_unique_id: 'UNIQTG1', file_name: 'SCI telegram.pdf', mime_type: 'application/pdf', file_size: 300000 } } });
+  W.botExec(() => W.bot.runJobs());
+  const tg = rows('PdfFiles').find((x) => x.file_name === 'SCI telegram.pdf');
+  IM = api('imports', { t: E3 });
+  ok(tg && IM.pending.some((x) => x.id === tg.import_id && x.by === 'Ali Firdaus' && x.n >= 4), 'a Telegram tick list shows in the web-app');
+  ok(!api('import', { t: E3, id: tg.import_id }).same, 'no same-report warning: the earlier SCI list was undone');
+  r = api('importSave', { t: E3, id: tg.import_id });
+  ok(r.ok && r.nE + r.nM >= 3, 'finished and saved from the web-app');
+  W.tap('222', 'is:' + tg.import_id);
+  ok(/sudah selesai/.test(strip(W.last('222').text)), 'the Telegram list then says "sudah selesai"');
+  const id6 = api('pdfUpload', { t: T3, name: 'SCI DPR rev1.pdf', b64: pdfB64('SCI rev1') }).id;
+  api('pdfRead', { t: T3, id: id6 });
+  const sm = api('import', { t: T3, id: id6 }).same;
+  ok(sm && sm.id === tg.import_id && sm.st === 'saved', 'another SCI file for the same date → "sudah dihantar" warning on the list');
+  api('importDrop', { t: T3, id: id6 });
+  ok(!api('importUndo', { t: T3, id: tg.import_id }).ok && rows('Imports').filter((x) => x.import_id === tg.import_id && x.state === 'saved').length > 0, 'a technician cannot undo an import someone else saved');
+  ok(api('importUndo', { t: E3, id: tg.import_id }).ok, 'the engineer who saved it can');
+}
+
 section('Clean run');
 ok(!rows('Log').some((l) => l.level === 'ERROR'), 'no ERROR rows in the Log tab');
 ok(env.warnings.length === 0, 'no unprotected values written to Sheets' + (env.warnings.length ? ': ' + env.warnings.slice(0, 3).join(' | ') : ''));
