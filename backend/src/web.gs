@@ -13,12 +13,13 @@
 //      Services (left side) → + → Google Sheets API → Add   (optional: faster loading, w1.4)
 //   3. Editor → choose function "setup" → Run → allow access. Read the log.
 //   4. Deploy → New deployment → Web app · Execute as: Me · Who has access: Anyone → copy the /exec URL.
+//      UPGRADE (new WebApp.gs later): Deploy → Manage deployments → ✏️ → Version: New version. Never a new deployment.
 //   5. In the Sheet, tab "WebUsers": type a 4-digit PIN in "new_pin" for each person.
 //
 //  The bot's Code.gs is never changed. This project only adds rows the bot already understands
 //  (source = "web") and one tab of its own, "WebUsers".
 
-const WEB_VERSION = 'w1.4';
+const WEB_VERSION = 'w1.4.1';
 const WEB_TAB = 'WebUsers';
 const WEB_HEAD = ['user_id', 'name', 'role', 'new_pin', 'pin_set', 'active', 'last_login', 'added_at', 'note'];
 const WEB_TOKEN_DAYS = 30;
@@ -130,14 +131,17 @@ function webRoute_(a, b) {
 //  Rows come out exactly as the bot's rows_ makes them (normVal_, the same _row numbers). Writes never use this:
 //  it is only on while a read-only action runs, and never for WebUsers or Users.
 
+// Rule: an action may be listed here only if it never writes to the Sheet.
+// Settings and Categories are left out on purpose (w1.4.1): the bot keeps them in a 5-minute cache that
+// every action (saves, WhatsApp text) reuses, so they are always read by the bot's own rows_.
 const WEB_READS = {
-  day: ['Entries', 'Plans', 'Progress', 'Materials', 'Manpower', 'Days', 'Imports', 'PdfFiles', 'Categories', 'Settings'],
-  reports: ['ReportLog', 'Settings'],
+  day: ['Entries', 'Plans', 'Progress', 'Materials', 'Manpower', 'Days', 'Imports', 'PdfFiles'],
+  reports: ['ReportLog'],
   imports: ['Imports', 'PdfFiles', 'Entries'],
-  import: ['Imports', 'PdfFiles', 'Entries', 'Categories'],
+  import: ['Imports', 'PdfFiles', 'Entries'],
   pdfState: ['PdfFiles', 'Imports']
 };
-const WEB_SNAP_TABS = ['Entries', 'Plans', 'Progress', 'Materials', 'Manpower', 'Days', 'Imports', 'PdfFiles', 'ReportLog', 'Categories', 'Settings'];
+const WEB_SNAP_TABS = ['Entries', 'Plans', 'Progress', 'Materials', 'Manpower', 'Days', 'Imports', 'PdfFiles', 'ReportLog'];
 let WEB_SNAP = null;        // tab → rows, only while a read-only action runs
 let WEB_FAST = '';          // 'api' when the last snapshot came in one Sheets API call
 
@@ -223,24 +227,31 @@ function setup() {
   });
   webEnsureTab_();
   const list = webUsersSync_();
+  const fast = webFastCheck_();
   const lines = [
     '✅ Web-app backend ready (' + WEB_VERSION + ', bot code ' + BOT_VERSION + ').',
     'Sheet: ' + ss.getName(),
     'Photos folder: ' + p.getProperty('PHOTO_FOLDER_ID'),
     'AI wording: ' + (aiOn_() ? 'on' : 'off (no GEMINI_API_KEY)'),
-    'Fast read (Google Sheets API service): ' + (webFastCheck_() ? 'on' : 'off – Services → + → Google Sheets API → Add, then run setup again'),
+    'Fast read (Google Sheets API service, optional): ' + (fast ? 'off – ' + fast + '. The web-app works without it (one read per tab).' : 'on'),
     'Jana PDF via bot: ' + (p.getProperty('BOT_WEBAPP_URL') && p.getProperty('BOT_WEBHOOK_SECRET') ? 'on' : 'off (add BOT_WEBAPP_URL and BOT_WEBHOOK_SECRET)'),
     'WebUsers tab: ' + list.length + ' people (' + list.filter(function (x) { return x.pin; }).length + ' with a PIN).',
-    'NEXT: Deploy → New deployment → Web app (Execute as: Me · Who has access: Anyone).'
+    'NEXT – first time: Deploy → New deployment → Web app (Execute as: Me · Who has access: Anyone).',
+    'NEXT – upgrade: Deploy → Manage deployments → ✏️ → Version: New version → Deploy (keeps the same /exec address).'
   ];
   console.log(lines.join('\n'));
   return lines.join('\n');
 }
 
+/** '' when the fast read works, otherwise why not (shown in the setup log). */
 function webFastCheck_() {
   const api = webSheetsApi_();
-  if (!api) return false;
-  try { api.batchGet(prop_('SHEET_ID'), { ranges: ["'Settings'!A1:A1"] }); return true; } catch (e) { return false; }
+  if (!api) return 'the Google Sheets API service is not added (or its identifier is not "Sheets")';
+  try {                                         // the same call the fast read makes, on one cell
+    api.batchGet(prop_('SHEET_ID'), { ranges: ["'Entries'!A1:A1"], valueRenderOption: 'UNFORMATTED_VALUE', dateTimeRenderOption: 'SERIAL_NUMBER', majorDimension: 'ROWS' });
+    return '';
+  }
+  catch (e) { return 'the service is added but the call failed: ' + String((e && e.message) || e).slice(0, 160); }
 }
 
 // ---------- team list & PINs (tab "WebUsers") ----------

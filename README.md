@@ -44,7 +44,7 @@ It works alongside the Telegram "HLEP DPR Bot" and writes into the same Google S
    | `GEMINI_API_KEY` | same as the bot's (optional) |
    | `BOT_WEBAPP_URL` | the bot's Script property `WEBAPP_URL` |
    | `BOT_WEBHOOK_SECRET` | the bot's Script property `WEBHOOK_SECRET` |
-   **Faster loading (recommended):** on the left, **Services** → **＋** → **Google Sheets API** → **Add**. The backend then reads all the tabs a page needs in one call. It works without it, only slower.
+   **Optional fast read:** on the left, **Services** → **＋** → **Google Sheets API** (identifier `Sheets`) → **Add**. The backend then reads a page's tabs in one call. It works without it (one read per tab); add it only if loading is still slow, see `docs/w1.4-before-after.md`.
 4. **Run `setup`.** Select the function `setup` → **Run** → allow access. The log should say "✅ Web-app backend ready".
 5. **Deploy.** Deploy → New deployment → Web app. Execute as: **Me** · Who has access: **Anyone**. Copy the `/exec` URL.
 6. **Connect the app.** Put that URL in `app/config.js` (`api: '…/exec'`) and commit. GitHub Pages redeploys by itself.
@@ -54,13 +54,15 @@ It works alongside the Telegram "HLEP DPR Bot" and writes into the same Google S
    - For someone without Telegram, add a row with just their name and role (`tech` or `eng`).
    - To remove someone, set `active = N`.
 
+**Upgrading the backend (any new WebApp.gs):** paste it, run `setup`, then Deploy → **Manage deployments** → ✏️ → **New version**. Never "New deployment" for an upgrade: that makes a second `/exec` address the app does not use.
+
 **When the bot gets a new version:** rebuild `WebApp.gs` from the new `Code.gs`, run `npm test`, paste it into the web-app project, then Deploy → Manage deployments → Edit → New version.
 
 ## Develop
 
 ```bash
 npm install
-npm test           # builds WebApp.gs, then runs the web backend and the bot together (181 checks)
+npm test           # builds WebApp.gs, then runs the web backend and the bot together (187 checks)
 npm run dev        # local preview on http://localhost:8080 with a demo day (PIN 1234)
 ```
 

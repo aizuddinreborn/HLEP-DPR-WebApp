@@ -506,7 +506,7 @@ section('w1.4 · fast reads: each tab once per request, or all tabs in one Sheet
     apiCalls++;
     if (id !== 'SHEET123' || opt.valueRenderOption !== 'UNFORMATTED_VALUE' || opt.dateTimeRenderOption !== 'SERIAL_NUMBER') throw new Error('bad batchGet');
     return { valueRanges: opt.ranges.map((r) => {
-      const name = r.replace(/^'|'(!.*)?$/g, '').replace(/''/g, "'");
+      const name = r.replace(/!.*$/, '').replace(/^'|'$/g, '').replace(/''/g, "'");
       const sh = env.sheets.find((s) => s.name === name);
       if (!sh) throw new Error('Unable to parse range: ' + r);
       let rows = sh.data.map((row) => row.map((v) => (v instanceof WebDate || v instanceof Date ? serial(v) : v === null ? '' : v)));
@@ -532,10 +532,43 @@ section('w1.4 · fast reads: each tab once per request, or all tabs in one Sheet
   r = api('save', { t: E4, cid: cid(), date: '10/10/2026', area: 'U1', cat: 'U1_GEN', status: 'IP', shift: 'D', text: 'Fast read write check.' });
   ok(r.ok && rows('Entries').length === before + 1 && api('day', { t: E4, date: '10/10/2026' }).entries.some((e) => e.text === 'Fast read write check.'), 'a save right after is seen by the next read');
   api('remove', { t: E4, id: r.id });
+  // w1.4.1: the other three read-only actions give the same answer with the service on and off
+  const impId = rows('Imports')[0].import_id;
+  const three = () => strip2([api('imports', { t: E4 }), api('import', { t: E4, id: impId }), api('pdfState', { t: E4, id: impId })]);
+  const threeOn = three();
+  W.web.Sheets = undefined;
+  const threeOff = three();
+  W.web.Sheets = Sheets;
+  ok(threeOn === threeOff, 'w1.4.1: contractor list, one tick list and PDF status identical with the service on and off');
+  // w1.4.1 bug fix: Settings and Categories never come through the fast read (the bot caches them for every action)
+  const realGet = Sheets.Spreadsheets.Values.batchGet;
+  const asked = [];
+  Sheets.Spreadsheets.Values.batchGet = (id, opt) => { asked.push(...opt.ranges); return realGet(id, opt); };
+  const setT = env.sheets.find((x) => x.name === 'Settings');
+  const SH = setT.data[0];
+  const si = setT.data.findIndex((row, i) => i > 0 && row[SH.indexOf('key')] === 'TIME_START_U1');
+  const oldTime = setT.data[si][SH.indexOf('value')];
+  setT.data[si][SH.indexOf('value')] = new WebDate(Date.UTC(1899, 11, 30, 1, 0, 0));      // "8:00" typed by hand: Sheets keeps a time
+  const fresh = () => { ['settings', 'cats'].forEach((k) => delete W.sep.cache[k]); };
+  W.web.Sheets = undefined; fresh();
+  const waOff = api('wa', { t: E4, date: '10/10/2026' }).texts[0].text;
+  W.web.Sheets = Sheets; fresh();
+  api('day', { t: E4, date: '10/10/2026' });                                          // fills the 5-minute settings cache
+  const waOn = api('wa', { t: E4, date: '10/10/2026' }).texts[0].text;
+  const tsLine = (t) => (t.match(/Time Start: .*/) || [''])[0];
+  ok(asked.length > 0 && !asked.some((x) => /Settings|Categories/.test(x)), 'w1.4.1: Settings and Categories are never in the single call');
+  ok(waOn === waOff && !/Time Start: 0\.\d/.test(waOn) && /Time Start: \d{1,2}:\d{2} [AP]M/.test(waOn), 'w1.4.1: a hand-typed time in Settings gives the same WhatsApp text (' + tsLine(waOn) + ')');
+  setT.data[si][SH.indexOf('value')] = oldTime; fresh();
+  Sheets.Spreadsheets.Values.batchGet = realGet;
+  let log = W.webExec(() => W.web.setup());
+  ok(/Fast read \(Google Sheets API service, optional\): on/.test(log), 'setup says "on" when the service works');
+  ok(/NEXT – upgrade: Deploy → Manage deployments → ✏️ → Version: New version/.test(log) && /NEXT – first time: Deploy → New deployment/.test(log), 'w1.4.1: setup log tells first install and upgrade apart');
   Sheets.Spreadsheets.Values.batchGet = () => { throw new Error('API has not been enabled'); };
   ok(strip2(api('day', { t: E4, date: '07/10/2026' })) === strip2(d7slow), 'service failing → falls back to reading tab by tab');
+  log = W.webExec(() => W.web.setup());
+  ok(/Fast read \(Google Sheets API service, optional\): off – the service is added but the call failed: API has not been enabled\. The web-app works without it/.test(log), 'setup says "off" with the reason when the call fails');
   W.web.Sheets = undefined;
-  ok(/Fast read \(Google Sheets API service\): off/.test(W.webExec(() => W.web.setup())), 'setup reports whether the fast read is on');
+  ok(/off – the Google Sheets API service is not added/.test(W.webExec(() => W.web.setup())), 'setup says "off – not added" without the service');
   // put the hand-typed cells back as the bot writes them
   ent.data[ri][H.indexOf('received_at')] = '2026-10-10 08:15:30';
   ent.data[ri][H.indexOf('work_date')] = '2026-10-10';
