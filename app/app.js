@@ -4,7 +4,7 @@
 (function () {
   'use strict';
 
-  const APP_VERSION = '1.3.0';
+  const APP_VERSION = '1.3.1';
   const TZ = 'Asia/Kuala_Lumpur';
   const PHOTO_EDGE = 1600;        // longest side after shrinking on the phone
   const PHOTO_Q = 0.82;

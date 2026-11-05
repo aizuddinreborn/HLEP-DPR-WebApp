@@ -1,4 +1,4 @@
-# HLEP DPR Web-app – session handoff (as of w1.3, 05/11/2026)
+# HLEP DPR Web-app – session handoff (as of w1.3.1, 05/11/2026)
 
 Build session: https://claude.ai/code/session_013Z1t4uvdrdQSVrZNFCMGRj
 Repo: https://github.com/aizuddinreborn/hlep-dpr-webapp (public) · App: https://aizuddinreborn.github.io/HLEP-DPR-WebApp/ (Pages publishes the `main` branch root; the root `index.html` redirects to `app/`, so the app's real address is …/HLEP-DPR-WebApp/app/. Do not add a GitHub Actions Pages workflow: two deployments race and the one that finishes last wins, which caused a 404 on /app/.)
@@ -11,7 +11,7 @@ Continue building my "HLEP DPR Web-app" (pastel mobile PWA on GitHub Pages + its
 Before anything else:
 1. Attach the repo aizuddinreborn/hlep-dpr-webapp and read docs/HANDOFF.md and README.md.
 2. Read these Project docs: "claude/HLEP DPR Bot v1.4 - Code.gs" (save it to /home/claude/hlep-dpr-bot/Code.gs) and "claude/HLEP DPR Bot - dev harness bundle.txt" (unpack it as the bot handoff explains).
-3. Run `npm install && npm test` in the repo. It should end with "All 167 web checks passed".
+3. Run `npm install && npm test` in the repo. It should end with "All 171 web checks passed".
 
 How I work with you:
 - Interview me first. Ask about the goal, any missing context and the output format before building.
@@ -57,6 +57,7 @@ My next request: <write it here>
   - Tick lists from Telegram show on Hari ini and can be finished in the web-app. A list uploaded in the web-app cannot be ticked in Telegram (the bot only shows lists on its own message; the bot is not changed).
   - Engineers are not messaged on Telegram (the web project has no bot token); instead Hari ini shows a "baru" mark on imports saved by technicians.
   - Undo: the saver or an engineer. Throw away a list: the uploader or an engineer.
+  - Hari ini card follows the viewed date (w1.3.1, user's request): a list shows only on its report date, waiting or saved, at any age. PDFs being read, failed reads and lists with no report date yet show on today only.
 - **PDF:**
   - The backend posts `/report dd/mm/yyyy` (or `/weekly`) to the bot's webhook. It uses `BOT_WEBAPP_URL` + `BOT_WEBHOOK_SECRET`, and the `update_id` is the string `web…`.
   - The bot builds the PDF and sends it to that person's Telegram. The app then polls `ReportLog` and downloads the file through the backend.
@@ -81,7 +82,7 @@ My next request: <write it here>
 2. Put the bot's Code.gs at `/home/claude/hlep-dpr-bot/Code.gs`, or set `BOT_CODE`.
 3. Unpack the bot's harness bundle and set `HARNESS=<root>/harness`. The default path in `backend/test/world.js` is the build session's scratchpad.
    - The bot's own `run.js` needs three old-version files (`Code_v0.1.gs`, `Code_v0.4.gs`, `Code_v0.6.1.gs`) that are not in the bundle. Wrap those three upgrade tests in an `fs.existsSync` skip; the other 531 checks pass.
-4. `npm test` runs 167 web checks.
+4. `npm test` runs 171 web checks.
 5. `npm run dev` starts a preview on :8080 with a demo day. Every demo user's PIN is 1234.
    - `node tools/shots.js` walks the whole UI (phone) and reports console errors.
    - `node tools/laptop.js` takes laptop screenshots. `node tools/check-w12.js` and `node tools/check-w13.js` walk the w1.2 and w1.3 flows (restart the preview before each).

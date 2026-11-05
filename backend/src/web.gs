@@ -17,7 +17,7 @@
 //  The bot's Code.gs is never changed. This project only adds rows the bot already understands
 //  (source = "web") and one tab of its own, "WebUsers".
 
-const WEB_VERSION = 'w1.3';
+const WEB_VERSION = 'w1.3.1';
 const WEB_TAB = 'WebUsers';
 const WEB_HEAD = ['user_id', 'name', 'role', 'new_pin', 'pin_set', 'active', 'last_login', 'added_at', 'note'];
 const WEB_TOKEN_DAYS = 30;
@@ -96,7 +96,7 @@ const WEB_ACTIONS = {
   pdfRead: [true, false, function (u, b) { return apiPdfRead_(u, b); }],
   pdfState: [true, false, function (u, b) { return apiPdfState_(b); }],
   pdfDrop: [true, false, function (u, b) { return apiPdfDrop_(u, b); }],
-  imports: [true, false, function (u, b) { return apiImports_(u); }],
+  imports: [true, false, function (u, b) { return apiImports_(u, b); }],
   import: [true, false, function (u, b) { return apiImport_(u, b); }],
   importSet: [true, false, function (u, b) { return apiImportSet_(u, b); }],
   importDate: [true, false, function (u, b) { return apiImportDate_(u, b); }],
@@ -400,7 +400,7 @@ function apiDay_(u, b) {
     materials: d.materials.filter(function (m) { return m.arrived_date && m.arrived_date <= date; })
       .sort(function (a, b2) { return a.arrived_date < b2.arrived_date ? 1 : -1; })
       .map(function (m) { return { row: m._row, area: m.area, cat: m.category_key, label: label(m.category_key), item: m.item, date: m.arrived_date }; }),
-    imports: webImportsList_(u)
+    imports: webImportsList_(u, date)
   };
 }
 
@@ -1052,9 +1052,15 @@ function webImportSaver_(items, byId) {
   return { uid: '', name: '', at: '' };
 }
 
-/** The Hari ini card: PDFs being read, mine that failed, tick lists waiting (Telegram or web), lists saved in the last 2 days. */
-function webImportsList_(u) {
-  const reading = webReadingIds_();
+/**
+ * The Hari ini card. With a date (the day being viewed, w1.3.1): only lists whose report date is that day, waiting or
+ * saved (any age). PDFs still being read, mine that failed, and lists with no report date yet have no day, so they show
+ * on today only. Without a date: everything waiting, plus lists saved in the last 2 days.
+ */
+function webImportsList_(u, date) {
+  const byDay = !!date;
+  const onToday = !byDay || date === today_();
+  const reading = onToday ? webReadingIds_() : [];
   const since = addDays_(today_(), -2);
   const out = { reading: [], failed: [], pending: [], done: [] };
   const groups = {};
@@ -1062,13 +1068,14 @@ function webImportsList_(u) {
   rows_('PdfFiles').forEach(function (r) {
     if (reading.indexOf(r.import_id) >= 0) out.reading.push({ id: r.import_id, name: r.file_name, by: r.by, at: r.at });
     else if (!groups[r.import_id] && (r.state === 'failed' || (r.state === 'queued' && !r.tg_unique)) && String(r.by_id) === String(u.user_id) &&
-      String(r.at).slice(0, 10) >= since) out.failed.push({ id: r.import_id, name: r.file_name, at: r.at });
+      onToday && String(r.at).slice(0, 10) >= since) out.failed.push({ id: r.import_id, name: r.file_name, at: r.at });
   });
   let byId = null;
   Object.keys(groups).forEach(function (id) {
     const its = groups[id];
     const h = its[0];
     const head = { id: id, contractor: h.contractor || '', name: h.file_name, date: h.report_date || '', by: h.created_by, at: h.created_at };
+    if (byDay && (h.report_date ? String(h.report_date) !== date : !onToday)) return;
     const pend = its.filter(function (r) { return r.state === 'pending'; });
     if (pend.length) {
       out.pending.push(Object.assign(head, { n: pend.length, picked: pend.filter(function (r) { return r.picked === 'Y'; }).length }));
@@ -1078,7 +1085,7 @@ function webImportsList_(u) {
     if (!saved.length) return;
     if (!byId) { byId = {}; rows_('Entries').forEach(function (e) { byId[e.entry_id] = e; }); }
     const s = webImportSaver_(its, byId);
-    if (String(s.at || h.created_at).slice(0, 10) < since) return;
+    if (!byDay && String(s.at || h.created_at).slice(0, 10) < since) return;
     const su = s.uid ? webUser_(s.uid) : null;
     out.done.push(Object.assign(head, { n: saved.length, savedBy: s.name, savedAt: s.at, savedByEng: !!(su && isEng_(su)) }));
   });
@@ -1088,7 +1095,7 @@ function webImportsList_(u) {
   return out;
 }
 
-function apiImports_(u) { return webImportsList_(u); }
+function apiImports_(u, b) { return webImportsList_(u, b && b.date ? webDate_(b.date) : ''); }
 
 /** One tick list, as the app shows it. */
 function apiImport_(u, b) {

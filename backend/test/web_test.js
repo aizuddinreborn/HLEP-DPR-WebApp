@@ -296,6 +296,7 @@ section('w1.3 · contractor PDF → AI (electrical only) → tick list → repor
 {
   const T3 = api('login', { id: '222', pin: '1234' }).token;
   const E3 = api('login', { id: '111', pin: '4321' }).token;
+  const dayImp = (tk, d) => api('day', { t: tk, date: d }).imports;
   const ITEMS = [
     { category: 'U1_EPS', area: 'U1', status: 'IP', shift: 'D', kind: 'today', line: 'Installation of battery racks in the battery room is ongoing (2 of 4 racks).', source: 'Batt rack installation 2/4 nos', page: 2 },
     { category: '', area: 'U1', status: 'IP', shift: 'D', kind: 'today', line: 'Installation of lighting fixtures at the intake area is ongoing.', source: 'Lighting fixture install at intake', page: 2 },
@@ -341,6 +342,7 @@ section('w1.3 · contractor PDF → AI (electrical only) → tick list → repor
   ok(env.folders[file._parent]._name === '2026-10' && env.folders[env.folders[file._parent]._parent]._name === 'Contractor Reports' && env.folders[env.folders[file._parent]._parent]._id === env.props.CONTRACTOR_FOLDER_ID,
     'PDF kept in the bot\'s own Contractor Reports/2026-10 folder');
   ok(api('pdfState', { t: T3, id }).state === 'reading' && api('imports', { t: E3 }).reading.some((x) => x.id === id), 'shown as "being read" (to everyone)');
+  ok(dayImp(T3, '10/10/2026').reading.some((x) => x.id === id) && !dayImp(T3, '07/10/2026').reading.length, 'w1.3.1: a PDF being read shows on today only');
   r = api('pdfUpload', { t: E3, name: 'copy.pdf', b64: pdfB64('SCI daily') });
   ok(r.ok && r.seen && r.seen.st === 'reading' && r.seen.by === 'Ali Firdaus', 'same file again while it is read → "sudah dihantar, sedang dibaca"');
 
@@ -386,6 +388,8 @@ section('w1.3 · contractor PDF → AI (electrical only) → tick list → repor
   let IM = api('imports', { t: E3 });
   const dn = IM.done.find((x) => x.id === id);
   ok(dn && dn.savedBy === 'Ali Firdaus' && !dn.savedByEng && dn.n === 4 && !IM.pending.some((x) => x.id === id), 'engineer\'s Hari ini: "Ali saved SCI" notice');
+  ok(dayImp(E3, '07/10/2026').done.some((x) => x.id === id) && !dayImp(E3, '10/10/2026').done.some((x) => x.id === id) && !dayImp(E3, '08/10/2026').done.some((x) => x.id === id),
+    'w1.3.1: the saved import shows on its report date (07/10) only, not today or another day');
   const d7 = api('day', { t: E3, date: '07/10/2026' });
   ok(d7.entries.some((e) => e.src === 'contractor' && /powerhouse crane/.test(e.text)) && d7.imports && Array.isArray(d7.imports.done), 'day view lists the contractor lines (and the import card data)');
   W.say('111', '/today 07/10/2026');
@@ -401,11 +405,13 @@ section('w1.3 · contractor PDF → AI (electrical only) → tick list → repor
   const id2 = api('pdfUpload', { t: E3, name: 'KEM LETRIK daily.pdf', b64: pdfB64('KEM') }).id;
   r = api('pdfRead', { t: E3, id: id2 });
   ok(r.state === 'review' && api('import', { t: E3, id: id2 }).head.date === '', 'report without a date → list without a date');
+  ok(dayImp(E3, '10/10/2026').pending.some((x) => x.id === id2) && !dayImp(E3, '06/10/2026').pending.some((x) => x.id === id2), 'w1.3.1: a list with no date yet shows on today');
   r = api('importSave', { t: E3, id: id2 });
   ok(!r.ok && r.code === 'nodate', 'save asks for the report date');
   ok(!api('importDate', { t: E3, id: id2, date: '11/10/2026' }).ok, 'future report date refused');
   L = api('importDate', { t: E3, id: id2, date: '06/10/2026' });
   ok(L.head.date === '2026-10-06', 'date set');
+  ok(dayImp(E3, '06/10/2026').pending.some((x) => x.id === id2) && !dayImp(E3, '10/10/2026').pending.some((x) => x.id === id2), 'w1.3.1: once dated it moves to 06/10');
   r = api('importSave', { t: E3, id: id2 });
   ok(r.ok && r.nE === 1 && rows('Entries').some((e) => e.work_date === '2026-10-06' && /powerhouse crane/.test(e.activity_text) && e.source === 'contractor'), 'saved on 06/10');
 
