@@ -44,6 +44,7 @@ It works alongside the Telegram "HLEP DPR Bot" and writes into the same Google S
    | `GEMINI_API_KEY` | same as the bot's (optional) |
    | `BOT_WEBAPP_URL` | the bot's Script property `WEBAPP_URL` |
    | `BOT_WEBHOOK_SECRET` | the bot's Script property `WEBHOOK_SECRET` |
+   **Faster loading (recommended):** on the left, **Services** → **＋** → **Google Sheets API** → **Add**. The backend then reads all the tabs a page needs in one call. It works without it, only slower.
 4. **Run `setup`.** Select the function `setup` → **Run** → allow access. The log should say "✅ Web-app backend ready".
 5. **Deploy.** Deploy → New deployment → Web app. Execute as: **Me** · Who has access: **Anyone**. Copy the `/exec` URL.
 6. **Connect the app.** Put that URL in `app/config.js` (`api: '…/exec'`) and commit. GitHub Pages redeploys by itself.
@@ -59,7 +60,7 @@ It works alongside the Telegram "HLEP DPR Bot" and writes into the same Google S
 
 ```bash
 npm install
-npm test           # builds WebApp.gs, then runs the web backend and the bot together (171 checks)
+npm test           # builds WebApp.gs, then runs the web backend and the bot together (181 checks)
 npm run dev        # local preview on http://localhost:8080 with a demo day (PIN 1234)
 ```
 

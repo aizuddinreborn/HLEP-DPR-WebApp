@@ -456,6 +456,91 @@ section('w1.3 · contractor PDF → AI (electrical only) → tick list → repor
   ok(api('importUndo', { t: E3, id: tg.import_id }).ok, 'the engineer who saved it can');
 }
 
+section('w1.4 · fast reads: each tab once per request, or all tabs in one Sheets API call');
+{
+  const vm = require('vm');
+  const E4 = api('login', { id: '111', pin: '4321' }).token;
+  // count the Spreadsheet calls one request makes
+  const calls = {};
+  const ss = env.spreadsheet;
+  const get0 = ss.getSheetByName.bind(ss);
+  ss.getSheetByName = (n) => {
+    const sh = get0(n);
+    if (sh && !sh.__counted) {
+      sh.__counted = 1;
+      ['getRange', 'getLastRow', 'getLastColumn', 'getDataRange'].forEach((m) => { if (!sh[m]) return; const o = sh[m].bind(sh); sh[m] = (...a) => { calls[n] = (calls[n] || 0) + 1; return o(...a); }; });
+    }
+    return sh;
+  };
+  const count = (fn) => { Object.keys(calls).forEach((k) => delete calls[k]); const r = fn(); return { r, calls: Object.assign({}, calls) }; };
+  // a date and a time typed by hand into the Sheet (real Date cells, not the bot's text)
+  const ent = env.sheets.find((s) => s.name === 'Entries');
+  const H = ent.data[0];
+  const ri = ent.data.findIndex((row, i) => i > 0 && row[H.indexOf('work_date')] === '2026-10-10' && row[H.indexOf('deleted')] === '');
+  const WebDate = vm.runInContext('Date', W.web);
+  ent.data[ri][H.indexOf('received_at')] = new WebDate(Date.UTC(2026, 9, 10, 0, 15, 30));      // 08:15:30 KL
+  ent.data[ri][H.indexOf('work_date')] = new WebDate(Date.UTC(2026, 9, 9, 16, 0, 0));          // 10/10/2026 00:00 KL
+
+  const slow = count(() => api('day', { t: E4, date: '10/10/2026' }));
+  ok(slow.r.ok && slow.r.entries.some((e) => e.at === '2026-10-10 08:15:30'), 'a hand-typed date cell still reads as the bot reads it');
+  const eReads = (c) => c.Entries || 0;
+  const saved = vm.runInContext('WEB_READS.day', W.web);
+  vm.runInContext('delete WEB_READS.day', W.web);
+  const old = count(() => api('day', { t: E4, date: '10/10/2026' }));
+  W.web.__d = saved; vm.runInContext('WEB_READS.day = __d', W.web);
+  const tot = (c) => Object.values(c).reduce((a, b) => a + b, 0);
+  ok(eReads(slow.calls) === 3 && eReads(old.calls) >= 6 &&      // the mock's getDataRange() calls getLastRow/getLastColumn itself: 3 = one read
+    JSON.stringify(old.r.entries) === JSON.stringify(slow.r.entries),
+    'without the service: Entries read once (' + eReads(old.calls) + ' → ' + eReads(slow.calls) + ' Sheet calls), same result');
+  ok(tot(slow.calls) < tot(old.calls), 'a date change makes fewer Sheet calls overall (' + tot(old.calls) + ' → ' + tot(slow.calls) + ')');
+
+  // fake Google Sheets API, built from what SpreadsheetApp returns (Dates → serial numbers in the sheet's time zone)
+  const tz = ss.getSpreadsheetTimeZone();
+  const serial = (d) => {
+    const p = {}; new Intl.DateTimeFormat('en-GB', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' })
+      .formatToParts(d).forEach((x) => { p[x.type] = x.value; });
+    return Date.UTC(+p.year, +p.month - 1, +p.day, +p.hour, +p.minute, +p.second) / 86400000 + 25569;
+  };
+  let apiCalls = 0;
+  const Sheets = { Spreadsheets: { Values: { batchGet: (id, opt) => {
+    apiCalls++;
+    if (id !== 'SHEET123' || opt.valueRenderOption !== 'UNFORMATTED_VALUE' || opt.dateTimeRenderOption !== 'SERIAL_NUMBER') throw new Error('bad batchGet');
+    return { valueRanges: opt.ranges.map((r) => {
+      const name = r.replace(/^'|'(!.*)?$/g, '').replace(/''/g, "'");
+      const sh = env.sheets.find((s) => s.name === name);
+      if (!sh) throw new Error('Unable to parse range: ' + r);
+      let rows = sh.data.map((row) => row.map((v) => (v instanceof WebDate || v instanceof Date ? serial(v) : v === null ? '' : v)));
+      rows = rows.map((row) => { const x = row.slice(); while (x.length && x[x.length - 1] === '') x.pop(); return x; });
+      while (rows.length && !rows[rows.length - 1].length) rows.pop();
+      return { range: r, values: rows };
+    }) };
+  } } } };
+  W.web.Sheets = Sheets;
+  const fast = count(() => api('day', { t: E4, date: '10/10/2026' }));
+  const dataTabs = ['Entries', 'Plans', 'Progress', 'Materials', 'Manpower', 'Days', 'Imports', 'PdfFiles'];
+  ok(apiCalls === 1 && dataTabs.every((t) => !fast.calls[t]), 'with the service: one Sheets API call, no tab read one by one');
+  const strip2 = (d) => JSON.stringify(Object.assign({}, d, { today: '' }));
+  ok(strip2(fast.r) === strip2(slow.r), 'the day comes out identical (entries, plans, %, materials, manpower, contractor card)');
+  W.web.Sheets = undefined;
+  const d7slow = api('day', { t: E4, date: '07/10/2026' });
+  W.web.Sheets = Sheets;
+  ok(strip2(api('day', { t: E4, date: '07/10/2026' })) === strip2(d7slow), 'another day (with contractor lines and plans) identical too');
+  ok(strip2(api('reports', { t: E4, date: '10/10/2026' })) === (W.web.Sheets = undefined, strip2(api('reports', { t: E4, date: '10/10/2026' }))), 'report list identical');
+  W.web.Sheets = Sheets;
+  // writes are never served from the snapshot
+  const before = rows('Entries').length;
+  r = api('save', { t: E4, cid: cid(), date: '10/10/2026', area: 'U1', cat: 'U1_GEN', status: 'IP', shift: 'D', text: 'Fast read write check.' });
+  ok(r.ok && rows('Entries').length === before + 1 && api('day', { t: E4, date: '10/10/2026' }).entries.some((e) => e.text === 'Fast read write check.'), 'a save right after is seen by the next read');
+  api('remove', { t: E4, id: r.id });
+  Sheets.Spreadsheets.Values.batchGet = () => { throw new Error('API has not been enabled'); };
+  ok(strip2(api('day', { t: E4, date: '07/10/2026' })) === strip2(d7slow), 'service failing → falls back to reading tab by tab');
+  W.web.Sheets = undefined;
+  ok(/Fast read \(Google Sheets API service\): off/.test(W.webExec(() => W.web.setup())), 'setup reports whether the fast read is on');
+  // put the hand-typed cells back as the bot writes them
+  ent.data[ri][H.indexOf('received_at')] = '2026-10-10 08:15:30';
+  ent.data[ri][H.indexOf('work_date')] = '2026-10-10';
+}
+
 section('Clean run');
 ok(!rows('Log').some((l) => l.level === 'ERROR'), 'no ERROR rows in the Log tab');
 ok(env.warnings.length === 0, 'no unprotected values written to Sheets' + (env.warnings.length ? ': ' + env.warnings.slice(0, 3).join(' | ') : ''));

@@ -10,6 +10,7 @@
 //        GEMINI_API_KEY       same key as the bot (optional: without it lines are saved as typed)
 //        BOT_WEBAPP_URL       the bot's Script property WEBAPP_URL   (for "Jana PDF")
 //        BOT_WEBHOOK_SECRET   the bot's Script property WEBHOOK_SECRET (for "Jana PDF")
+//      Services (left side) → + → Google Sheets API → Add   (optional: faster loading, w1.4)
 //   3. Editor → choose function "setup" → Run → allow access. Read the log.
 //   4. Deploy → New deployment → Web app · Execute as: Me · Who has access: Anyone → copy the /exec URL.
 //   5. In the Sheet, tab "WebUsers": type a 4-digit PIN in "new_pin" for each person.
@@ -17,7 +18,7 @@
 //  The bot's Code.gs is never changed. This project only adds rows the bot already understands
 //  (source = "web") and one tab of its own, "WebUsers".
 
-const WEB_VERSION = 'w1.3.1';
+const WEB_VERSION = 'w1.4';
 const WEB_TAB = 'WebUsers';
 const WEB_HEAD = ['user_id', 'name', 'role', 'new_pin', 'pin_set', 'active', 'last_login', 'added_at', 'note'];
 const WEB_TOKEN_DAYS = 30;
@@ -114,7 +115,85 @@ function webRoute_(a, b) {
     if (!u) throw webErr_('Sesi tamat. Sila log masuk semula.', 'auth');
     if (h[1] && !isEng_(u)) throw webErr_('Untuk engineer sahaja.', 'eng');
   }
-  return h[2](u, b) || {};
+  const tabs = WEB_READS[a];
+  if (!tabs) return h[2](u, b) || {};
+  webSnapStart_(tabs);                       // read-only request: every tab is read once (or all in one Sheets API call)
+  try { return h[2](u, b) || {}; } finally { WEB_SNAP = null; }
+}
+
+// ---------- fast reads (w1.4) ----------
+//  (Without the service a tab is one getDataRange() read instead of the bot's 3–4 calls: last row, width, header, values.)
+//
+//  A date change used to open ~10 tabs one by one and read Entries 2–3 times. For the read-only actions below,
+//  rows_() now reads each tab once per request. With the "Google Sheets API" advanced service switched on
+//  (Apps Script editor → Services → + → Google Sheets API → Add), all of the request's tabs come in ONE call.
+//  Rows come out exactly as the bot's rows_ makes them (normVal_, the same _row numbers). Writes never use this:
+//  it is only on while a read-only action runs, and never for WebUsers or Users.
+
+const WEB_READS = {
+  day: ['Entries', 'Plans', 'Progress', 'Materials', 'Manpower', 'Days', 'Imports', 'PdfFiles', 'Categories', 'Settings'],
+  reports: ['ReportLog', 'Settings'],
+  imports: ['Imports', 'PdfFiles', 'Entries'],
+  import: ['Imports', 'PdfFiles', 'Entries', 'Categories'],
+  pdfState: ['PdfFiles', 'Imports']
+};
+const WEB_SNAP_TABS = ['Entries', 'Plans', 'Progress', 'Materials', 'Manpower', 'Days', 'Imports', 'PdfFiles', 'ReportLog', 'Categories', 'Settings'];
+let WEB_SNAP = null;        // tab → rows, only while a read-only action runs
+let WEB_FAST = '';          // 'api' when the last snapshot came in one Sheets API call
+
+function webSheetsApi_() {
+  return typeof Sheets !== 'undefined' && Sheets && Sheets.Spreadsheets && Sheets.Spreadsheets.Values ? Sheets.Spreadsheets.Values : null;
+}
+
+function webSnapStart_(tabs) {
+  WEB_SNAP = {};
+  WEB_FAST = '';
+  const api = webSheetsApi_();
+  if (!api) return;                           // without the service, each tab is still read only once (on first use)
+  try {
+    const res = api.batchGet(prop_('SHEET_ID'), {
+      ranges: tabs.map(function (t) { return "'" + t.replace(/'/g, "''") + "'"; }),
+      valueRenderOption: 'UNFORMATTED_VALUE', dateTimeRenderOption: 'SERIAL_NUMBER', majorDimension: 'ROWS'
+    });
+    const vr = (res && res.valueRanges) || [];
+    if (vr.length !== tabs.length) return;
+    tabs.forEach(function (t, i) { WEB_SNAP[t] = webSnapRows_(vr[i].values || [], true); });
+    WEB_FAST = 'api';
+  } catch (err) {
+    WEB_SNAP = {};                            // e.g. a tab is missing: read tab by tab, as the bot does
+  }
+}
+
+/** The same objects the bot's rows_ makes from getValues(), built from a whole-tab read (Sheets API reply when api). */
+function webSnapRows_(values, api) {
+  if (values.length < 2) return [];
+  let width = 0;
+  values.forEach(function (r) { if (r.length > width) width = r.length; });      // = getLastColumn()
+  const h = [];
+  for (let j = 0; j < width; j++) h.push(String(values[0][j] === undefined ? '' : values[0][j]));
+  return values.slice(1).map(function (r, i) {
+    const o = { _row: i + 2 };
+    h.forEach(function (k, j) { o[k] = api ? webCell_(k, r[j]) : normVal_(k, r[j] === undefined ? '' : r[j]); });
+    return o;
+  });
+}
+
+/** A cell as normVal_ returns it. Dates come from the API as serial numbers (days since 30/12/1899, sheet time). */
+function webCell_(k, v) {
+  if (v === undefined || v === null) return '';
+  if (typeof v === 'number' && (DATE_COLS[k] || /(^|_)at$/.test(k))) {
+    const d = new Date(Math.round((v - 25569) * 86400000));
+    if (v < 367) return Utilities.formatDate(d, 'UTC', 'h:mm a');                 // a time only (year < 1901)
+    return Utilities.formatDate(d, 'UTC', DATE_COLS[k] ? 'yyyy-MM-dd' : 'yyyy-MM-dd HH:mm:ss');
+  }
+  return normVal_(k, v);
+}
+
+/** The bot's rows_ (copied unchanged as botRows_), read once per tab while a read-only action runs. */
+function rows_(name) {
+  if (!WEB_SNAP || WEB_SNAP_TABS.indexOf(name) < 0) return botRows_(name);
+  if (!WEB_SNAP[name]) WEB_SNAP[name] = webSnapRows_(sheet_(name).getDataRange().getValues(), false);   // one call per tab
+  return WEB_SNAP[name].map(function (o) { return Object.assign({}, o); });
 }
 
 // ---------- one-time setup (run from the Apps Script editor) ----------
@@ -149,12 +228,19 @@ function setup() {
     'Sheet: ' + ss.getName(),
     'Photos folder: ' + p.getProperty('PHOTO_FOLDER_ID'),
     'AI wording: ' + (aiOn_() ? 'on' : 'off (no GEMINI_API_KEY)'),
+    'Fast read (Google Sheets API service): ' + (webFastCheck_() ? 'on' : 'off – Services → + → Google Sheets API → Add, then run setup again'),
     'Jana PDF via bot: ' + (p.getProperty('BOT_WEBAPP_URL') && p.getProperty('BOT_WEBHOOK_SECRET') ? 'on' : 'off (add BOT_WEBAPP_URL and BOT_WEBHOOK_SECRET)'),
     'WebUsers tab: ' + list.length + ' people (' + list.filter(function (x) { return x.pin; }).length + ' with a PIN).',
     'NEXT: Deploy → New deployment → Web app (Execute as: Me · Who has access: Anyone).'
   ];
   console.log(lines.join('\n'));
   return lines.join('\n');
+}
+
+function webFastCheck_() {
+  const api = webSheetsApi_();
+  if (!api) return false;
+  try { api.batchGet(prop_('SHEET_ID'), { ranges: ["'Settings'!A1:A1"] }); return true; } catch (e) { return false; }
 }
 
 // ---------- team list & PINs (tab "WebUsers") ----------

@@ -47,6 +47,10 @@ const ROOTS = [
 const NEVER = ['doPost', 'doGet', 'onOpen', 'send_', 'edit_', 'tg_', 'tgRaw_', 'sendDoc_', 'sendPre_', 'clearButtons_',
   'wait_', 'unwait_', 'answerCb_', 'tgDownload_', 'migrate_', 'handleUpdate_', 'route_', 'ensureSheets_', 'ensureFolders_'];
 
+// Bot functions web.gs wraps: web.gs defines its own `rows_` (same result, but each tab is read once per request,
+// or all tabs in one Sheets API call) and calls the bot's original, copied unchanged under the name `botRows_`.
+const RENAME = { rows_: 'botRows_' };
+
 function topLevel(src, file) {
   const ast = acorn.parse(src, { ecmaVersion: 2022, sourceType: 'script', locations: true });
   const defs = new Map();
@@ -80,8 +84,15 @@ function build() {
     take.add(name); queue.push(name);
   };
   ROOTS.forEach((r) => want(r));
+  // renamed copies: the bot's function body, unchanged, under another name
+  const renamed = Object.keys(RENAME).filter((orig) => W.defs.has(orig) && usedNames(W.ast).has(RENAME[orig]));
+  renamed.forEach((orig) => {
+    if (!B.defs.has(orig)) throw new Error('bot name not found: ' + orig);
+    usedNames(B.defs.get(orig)).forEach((n) => { if (n !== orig && B.defs.has(n)) want(n, orig); });
+  });
   // web.gs may use any bot name directly as well
   usedNames(W.ast).forEach((n) => { if (B.defs.has(n) && !W.defs.has(n)) want(n, 'web.gs'); });
+  const aliases = Object.values(RENAME);
   while (queue.length) {
     const name = queue.shift();
     usedNames(B.defs.get(name)).forEach((n) => { if (n !== name && B.defs.has(n)) want(n, name); });
@@ -106,6 +117,12 @@ function build() {
     const m = before.match(/(\/\*\*(?:(?!\*\/)[\s\S])*\*\/\s*|(?:\/\/[^\n]*\n\s*)+)$/);
     if (m && !/^\s*\/\/ =+/.test(m[0])) start -= m[0].length;
     return bot.slice(start, n.end);
+  });
+  renamed.forEach((orig) => {
+    const n = B.defs.get(orig);
+    const src = bot.slice(n.start, n.end);
+    if (n.type !== 'FunctionDeclaration' || src.indexOf('function ' + orig + '(') !== 0) throw new Error('cannot rename ' + orig);
+    copied.push('// The bot\'s ' + orig + ', unchanged except for its name (web.gs wraps it).\n' + 'function ' + RENAME[orig] + src.slice(('function ' + orig).length));
   });
 
   const header =

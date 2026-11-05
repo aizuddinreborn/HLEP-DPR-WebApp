@@ -4,7 +4,7 @@
 (function () {
   'use strict';
 
-  const APP_VERSION = '1.3.1';
+  const APP_VERSION = '1.4.0';
   const TZ = 'Asia/Kuala_Lumpur';
   const PHOTO_EDGE = 1600;        // longest side after shrinking on the phone
   const PHOTO_Q = 0.82;
@@ -128,6 +128,7 @@
     meta: ls.get('meta', null),
     date: today(),
     days: {},                              // ymd → day payload
+    loading: {},                           // ymd → requests in flight (the date pill shows "Mengemas kini…")
     tab: 'home',
     outbox: [],
     thumbs: new Map(),
@@ -372,17 +373,60 @@
     S.session.user = m.user; ls.set('session', S.session);
     return m;
   }
-  async function loadDay(date, quiet) {
+  // w1.4: a day already seen on this phone shows at once from its saved copy, then refreshes behind it.
+  const dayBusy = {};          // date → the request in flight (shared by a date change and a pre-load)
+  const dayAt = {};            // date → when it was last fetched in this session
+  const DAY_KEEP = 21;         // saved copies kept on the phone
+  function useSaved(date) {
+    if (S.days[date]) return;
+    const c = ls.get('day.' + date, null);
+    if (c) S.days[date] = Object.assign(c, { saved: true });
+  }
+  function keepDay(date, d) {
+    ls.set('day.' + date, d);
+    const keys = ls.get('dayKeys', []).filter((k) => k !== date);
+    keys.push(date);
+    while (keys.length > DAY_KEEP) ls.del('day.' + keys.shift());
+    ls.set('dayKeys', keys);
+  }
+  // shared=true (date change, pre-load) may join a request already on its way; after a save, always ask afresh
+  function loadDay(date, quiet, shared) {
+    if (shared && dayBusy[date]) return dayBusy[date];
+    S.loading[date] = (S.loading[date] || 0) + 1;
+    const p = (async () => {
+      try {
+        const d = await api('day', { date: dmy(date) });
+        S.days[date] = d;
+        dayAt[date] = Date.now();
+        keepDay(date, d);
+        return d;
+      } catch (e) {
+        useSaved(date);
+        if (S.days[date]) S.days[date].stale = true;
+        if (!quiet && !e.net) toast(e.message, 'bad');
+        return S.days[date] || null;
+      } finally {
+        if (dayBusy[date] === p) delete dayBusy[date];
+        if (!--S.loading[date]) delete S.loading[date];
+      }
+    })();
+    dayBusy[date] = p;
+    return p;
+  }
+  // copies saved before w1.4 had no list: keep the newest DAY_KEEP of them
+  function tidySaved() {
+    if (ls.get('dayKeys', null)) return;
     try {
-      const d = await api('day', { date: dmy(date) });
-      S.days[date] = d;
-      ls.set('day.' + date, d);
-      return d;
-    } catch (e) {
-      if (!S.days[date]) { const c = ls.get('day.' + date, null); if (c) S.days[date] = Object.assign(c, { stale: true }); }
-      if (!quiet && !e.net) toast(e.message, 'bad');
-      return S.days[date] || null;
-    }
+      const old = Object.keys(localStorage).filter((k) => /^hlep\.day\.\d{4}-\d{2}-\d{2}$/.test(k)).map((k) => k.slice(9)).sort();
+      old.slice(0, Math.max(0, old.length - DAY_KEEP)).forEach((d) => ls.del('day.' + d));
+      ls.set('dayKeys', old.slice(-DAY_KEEP));
+    } catch (e) { /* storage blocked */ }
+  }
+  // the day before is fetched quietly, so tapping ‹ shows it straight away
+  function preload(date) {
+    const y = addDays(date, -1);
+    if (dayBusy[y] || (dayAt[y] && Date.now() - dayAt[y] < 3 * 60000)) return;
+    loadDay(y, true, true).then(() => { if (S.date === y) render(); });
   }
   const maxPhotos = () => (S.meta && S.meta.maxPhotos) || 20;      // the bot's per-entry limit
   const pdfPhotos = () => (S.meta && S.meta.pdfPhotos != null ? S.meta.pdfPhotos : 2);   // PHOTOS_PER_ACTIVITY (PDF only)
@@ -397,10 +441,14 @@
     if (!S.session) return renderLogin();
     S.tab = (location.hash.replace('#', '') || 'home');
     if (!['home', 'data', 'report', 'me'].includes(S.tab)) S.tab = 'home';
+    tidySaved();
+    useSaved(S.date);
+    // the team list/systems and the day are fetched side by side (they used to wait for each other)
+    const boot = Promise.all([loadMeta().catch((e) => { if (!S.meta) toast(e.message, 'bad'); }), loadDay(S.date, true, true)]);
     render();
-    try { await loadMeta(); } catch (e) { if (!S.meta) { toast(e.message, 'bad'); } }
-    await loadDay(S.date, true);
+    await boot;
     render();
+    preload(S.date);
     syncOutbox();
   }
 
@@ -453,7 +501,7 @@
         toast('Selamat datang, ' + r.user.name.split(' ')[0] + '!', 'ok');
         S.tab = 'home'; goHash('home');
         render();
-        await loadMeta(); await loadDay(S.date, true); render(); syncOutbox();
+        await Promise.all([loadMeta(), loadDay(S.date, true, true)]); render(); preload(S.date); syncOutbox();
       } catch (e) {
         pin = '';
         $('#dots').innerHTML = '<i></i>'.repeat(4);
@@ -516,12 +564,19 @@
   }
   function datebar() {
     return '<div class="datebar"><button class="iconbtn" data-dprev aria-label="Hari sebelum">' + ic('left') + '</button>' +
-      '<button class="datepill" data-dpick><span class="ic">' + ic('cal', 's') + '</span><span class="grow"><span class="d">' + esc(relDay(S.date)) + ' · ' + esc(dmy(S.date)) + '</span><br><span class="w">' + esc(hari(S.date) + ', ' + niceDate(S.date)) + '</span></span></button>' +
+      '<button class="datepill" data-dpick><span class="ic">' + ic('cal', 's') + '</span><span class="grow"><span class="d">' + esc(relDay(S.date)) + ' · ' + esc(dmy(S.date)) + '</span><br><span class="w">' + (S.loading[S.date] ? '<span class="upd"><span class="spin"></span>' + (S.days[S.date] ? 'Mengemas kini…' : 'Memuatkan…') + '</span>' : esc(hari(S.date) + ', ' + niceDate(S.date))) + '</span></span></button>' +
       '<button class="iconbtn" data-dnext aria-label="Hari seterusnya"' + (S.date >= today() ? ' disabled' : '') + '>' + ic('right') + '</button></div>';
   }
   function bindCommon() {
     $$('[data-go]').forEach((b) => { b.onclick = () => { S.tab = b.dataset.go; goHash(S.tab); render(); }; });
-    const setDate = async (d) => { if (d > today()) return; S.date = d; render(); await loadDay(d); render(); };
+    const setDate = async (d) => {
+      if (d > today()) return;
+      S.date = d; useSaved(d);
+      const fresh = dayAt[d] && Date.now() - dayAt[d] < 60000;     // fetched a minute ago (e.g. pre-loaded): no new request
+      if (!fresh) loadDay(d, false, true).then(() => { if (S.date === d) render(); preload(d); });
+      render();
+      if (fresh) preload(d);
+    };
     const p = $('[data-dprev]'); if (p) p.onclick = () => setDate(addDays(S.date, -1));
     const n = $('[data-dnext]'); if (n) n.onclick = () => setDate(addDays(S.date, 1));
     const k = $('[data-dpick]'); if (k) k.onclick = () => pickDate(S.date, setDate);
@@ -1249,19 +1304,28 @@
     bindCommon();
     $$('[data-pdf]').forEach((b) => { b.onclick = () => pdfFlow(Number(b.dataset.pdf)); });
     const w = $('[data-wa]'); if (w) w.onclick = (e) => waGen(e.currentTarget);
-    const rl = $('[data-rl]'); if (rl) rl.onclick = () => loadReports();
+    const rl = $('[data-rl]'); if (rl) rl.onclick = () => loadReports(true);
     loadReports();
   };
-  async function loadReports() {
-    const box = $('#replist');
-    if (!box) return;
-    try {
-      const r = await api('reports', { date: dmy(S.date), days: 1 });
-      if (!$('#replist')) return;
+  // w1.4: one request per date (the page draws twice on a date change), shown from memory for 20 s
+  const reps = {};
+  const repBusy = {};
+  async function loadReports(force) {
+    const date = S.date;
+    const draw = (r) => {
+      const box = $('#replist');
+      if (!box || S.date !== date) return;
       box.innerHTML = r.list.length ? r.list.map((x) => '<div class="list-row"><span class="ic">' + ic('file', 's') + '</span><div class="grow"><div class="t">Rev ' + x.rev + '</div><div class="s">' + esc((x.by || '—') + ' · ' + dmy(String(x.at).slice(0, 10)) + ' ' + hhmm(x.at)) + '</div></div>' +
         (x.ready ? '<button class="btn soft sm" data-dl="' + x.rev + '">' + ic('download', 's') + '</button>' : '<span class="pill wait">sedang dijana</span>') + '</div>').join('') : '<p class="muted">Belum ada PDF untuk tarikh ini.</p>';
       $$('[data-dl]', box).forEach((b) => { b.onclick = (e) => downloadPdf(r.docNo, Number(b.dataset.dl), e.currentTarget); });
-    } catch (e) { box.innerHTML = '<p class="muted">' + esc(e.message) + '</p>'; }
+    };
+    const c = reps[date];
+    if (c) draw(c.r);
+    if (repBusy[date] || (!force && c && Date.now() - c.at < 20000)) return;
+    repBusy[date] = true;
+    try { const r = await api('reports', { date: dmy(date), days: 1 }); reps[date] = { at: Date.now(), r }; draw(r); }
+    catch (e) { const box = $('#replist'); if (box && S.date === date && !c) box.innerHTML = '<p class="muted">' + esc(e.message) + '</p>'; }
+    finally { repBusy[date] = false; }
   }
   async function downloadPdf(docNo, rev, btn) {
     busy(btn, true);
@@ -1328,7 +1392,7 @@
           drawSteps(3);
           $('#pfend', box).innerHTML = '<div class="banner mint" style="margin-top:8px">' + ic('telegram') + '<div class="grow"><b>' + esc(r.docNo) + ' · Rev ' + hit.rev + '</b>Juga dihantar ke Telegram anda.</div></div><button class="btn primary block" style="margin-top:12px" data-dl>' + ic('download', 's') + ' Muat turun PDF</button>';
           $('[data-dl]', box).onclick = (e) => downloadPdf(r.docNo, hit.rev, e.currentTarget);
-          if (S.tab === 'report') loadReports();
+          if (S.tab === 'report') loadReports(true);
           return;
         }
       } catch (e) { /* keep waiting */ }

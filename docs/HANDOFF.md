@@ -1,4 +1,4 @@
-# HLEP DPR Web-app – session handoff (as of w1.3.1, 05/11/2026)
+# HLEP DPR Web-app – session handoff (as of w1.4, 05/11/2026)
 
 Build session: https://claude.ai/code/session_013Z1t4uvdrdQSVrZNFCMGRj
 Repo: https://github.com/aizuddinreborn/hlep-dpr-webapp (public) · App: https://aizuddinreborn.github.io/HLEP-DPR-WebApp/ (Pages publishes the `main` branch root; the root `index.html` redirects to `app/`, so the app's real address is …/HLEP-DPR-WebApp/app/. Do not add a GitHub Actions Pages workflow: two deployments race and the one that finishes last wins, which caused a 404 on /app/.)
@@ -6,12 +6,12 @@ Repo: https://github.com/aizuddinreborn/hlep-dpr-webapp (public) · App: https:/
 ## Prompt to start the next session
 
 ```
-Continue building my "HLEP DPR Web-app" (pastel mobile PWA on GitHub Pages + its own Apps Script backend), which works alongside my Telegram "HLEP DPR Bot". The web-app is w1.3; the bot is v1.4 and must never be changed by web-app work.
+Continue building my "HLEP DPR Web-app" (pastel mobile PWA on GitHub Pages + its own Apps Script backend), which works alongside my Telegram "HLEP DPR Bot". The web-app is w1.4; the bot is v1.4 and must never be changed by web-app work.
 
 Before anything else:
 1. Attach the repo aizuddinreborn/hlep-dpr-webapp and read docs/HANDOFF.md and README.md.
 2. Read these Project docs: "claude/HLEP DPR Bot v1.4 - Code.gs" (save it to /home/claude/hlep-dpr-bot/Code.gs) and "claude/HLEP DPR Bot - dev harness bundle.txt" (unpack it as the bot handoff explains).
-3. Run `npm install && npm test` in the repo. It should end with "All 171 web checks passed".
+3. Run `npm install && npm test` in the repo. It should end with "All 181 web checks passed".
 
 How I work with you:
 - Interview me first. Ask about the goal, any missing context and the output format before building.
@@ -58,6 +58,11 @@ My next request: <write it here>
   - Engineers are not messaged on Telegram (the web project has no bot token); instead Hari ini shows a "baru" mark on imports saved by technicians.
   - Undo: the saver or an engineer. Throw away a list: the uploader or an engineer.
   - Hari ini card follows the viewed date (w1.3.1, user's request): a list shows only on its report date, waiting or saved, at any age. PDFs being read, failed reads and lists with no report date yet show on today only.
+- **Speed (w1.4, user chose "all of it + one-trip read"):**
+  - Backend: for read-only actions (`WEB_READS`: day, reports, imports, import, pdfState) web.gs's own `rows_` serves each tab once per request. With the **Google Sheets API advanced service** on, all the request's tabs come in one `Values.batchGet` (UNFORMATTED_VALUE + SERIAL_NUMBER; `webCell_` turns date serials in date columns back into the bot's strings). Without it, each tab is one `getDataRange()` read.
+  - The bot's `rows_` is copied unchanged as `botRows_` (build.js `RENAME`); writes always use it. WebUsers and Users are never served from the snapshot.
+  - Tests prove the day, report list and contractor card come out identical with and without the service, including hand-typed Date cells.
+  - App: a day seen before shows at once from its saved copy (21 days kept, `dayKeys`), with "Mengemas kini…" in the date pill while it refreshes; the day before is pre-loaded; meta and the day load side by side; the report list is fetched once per date (20 s memory).
 - **PDF:**
   - The backend posts `/report dd/mm/yyyy` (or `/weekly`) to the bot's webhook. It uses `BOT_WEBAPP_URL` + `BOT_WEBHOOK_SECRET`, and the `update_id` is the string `web…`.
   - The bot builds the PDF and sends it to that person's Telegram. The app then polls `ReportLog` and downloads the file through the backend.
@@ -82,10 +87,10 @@ My next request: <write it here>
 2. Put the bot's Code.gs at `/home/claude/hlep-dpr-bot/Code.gs`, or set `BOT_CODE`.
 3. Unpack the bot's harness bundle and set `HARNESS=<root>/harness`. The default path in `backend/test/world.js` is the build session's scratchpad.
    - The bot's own `run.js` needs three old-version files (`Code_v0.1.gs`, `Code_v0.4.gs`, `Code_v0.6.1.gs`) that are not in the bundle. Wrap those three upgrade tests in an `fs.existsSync` skip; the other 531 checks pass.
-4. `npm test` runs 171 web checks.
+4. `npm test` runs 181 web checks.
 5. `npm run dev` starts a preview on :8080 with a demo day. Every demo user's PIN is 1234.
    - `node tools/shots.js` walks the whole UI (phone) and reports console errors.
-   - `node tools/laptop.js` takes laptop screenshots. `node tools/check-w12.js` and `node tools/check-w13.js` walk the w1.2 and w1.3 flows (restart the preview before each).
+   - `node tools/laptop.js` takes laptop screenshots. `node tools/check-w12.js` and `node tools/check-w13.js` walk the w1.2 and w1.3 flows; `DELAY=3000 npm run dev` + `node tools/check-w14.js` times date changes on a slow backend (restart the preview before each).
 6. **Video:**
    1. Start the preview.
    2. `node tools/video-shots.js` captures the 2× app screens and the tap targets.
