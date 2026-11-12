@@ -4,7 +4,7 @@
   "description": "HLEP DPR web-app: pastel mobile PWA + Apps Script backend for the electrical daily progress report",
   "scripts": {
     "build": "node backend/build.js",
-    "test": "node backend/build.js && node backend/test/web_test.js",
+    "test": "node backend/build.js && node backend/test/web_test.js && node backend/test/beta_test.js",
     "dev": "node backend/build.js && node tools/dev-server.js 8080",
     "shots": "node tools/shots.js"
   },

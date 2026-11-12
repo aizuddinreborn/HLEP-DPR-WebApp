@@ -19,7 +19,7 @@
 //  The bot's Code.gs is never changed. This project only adds rows the bot already understands
 //  (source = "web") and one tab of its own, "WebUsers".
 
-const WEB_VERSION = 'w1.4.1';
+const WEB_VERSION = 'w2.0-b1';
 const WEB_TAB = 'WebUsers';
 const WEB_HEAD = ['user_id', 'name', 'role', 'new_pin', 'pin_set', 'active', 'last_login', 'added_at', 'note'];
 const WEB_TOKEN_DAYS = 30;
@@ -41,6 +41,7 @@ function doPost(e) {
   }
   try {
     if (!prop_('SHEET_ID')) return webOut_({ ok: false, err: 'Backend belum disediakan (jalankan setup).', code: 'setup' });
+    if (webSandboxBroken_()) return webOut_({ ok: false, err: 'Beta tersalah tetapan: ia menunjuk ke Sheet sebenar. Jalankan setupBeta semula.', code: 'setup' });
     const r = webRoute_(String(b.a || ''), b);
     r.ok = true;
     return webOut_(r);
@@ -104,7 +105,17 @@ const WEB_ACTIONS = {
   importDate: [true, false, function (u, b) { return apiImportDate_(u, b); }],
   importSave: [true, false, function (u, b) { return apiImportSave_(u, b); }],
   importUndo: [true, false, function (u, b) { return apiImportUndo_(u, b); }],
-  importDrop: [true, false, function (u, b) { return apiImportDrop_(u, b); }]
+  importDrop: [true, false, function (u, b) { return apiImportDrop_(u, b); }],
+  // w2.0 (beta first): search, dashboard, calendar, chat, voice note, photo guess, web-only preferences, sandbox refresh
+  search: [true, false, function (u, b) { return apiSearch_(u, b); }],
+  insights: [true, false, function (u, b) { return apiInsights_(u, b); }],
+  cal: [true, false, function (u, b) { return apiCal_(b); }],
+  chat: [true, false, function (u, b) { return apiChat_(u, b); }],
+  voice: [true, false, function (u, b) { return apiVoice_(b); }],
+  guess: [true, false, function (u, b) { return apiGuess_(b); }],
+  prefs: [true, true, function (u, b) { return apiPrefs_(); }],
+  prefSet: [true, true, function (u, b) { return apiPrefSet_(b); }],
+  betaRefresh: [true, true, function (u, b) { return apiBetaRefresh_(u); }]
 };
 
 function webRoute_(a, b) {
@@ -139,7 +150,11 @@ const WEB_READS = {
   reports: ['ReportLog'],
   imports: ['Imports', 'PdfFiles', 'Entries'],
   import: ['Imports', 'PdfFiles', 'Entries'],
-  pdfState: ['PdfFiles', 'Imports']
+  pdfState: ['PdfFiles', 'Imports'],
+  search: ['Entries', 'Materials'],
+  insights: ['Entries', 'Plans', 'Progress', 'Materials', 'Manpower', 'Days', 'Imports', 'PdfFiles'],
+  cal: ['Entries'],
+  chat: ['Entries', 'Plans', 'Progress', 'Materials', 'Manpower', 'Days', 'ReportLog']
 };
 const WEB_SNAP_TABS = ['Entries', 'Plans', 'Progress', 'Materials', 'Manpower', 'Days', 'Imports', 'PdfFiles', 'ReportLog'];
 let WEB_SNAP = null;        // tab → rows, only while a read-only action runs
@@ -204,9 +219,12 @@ function rows_(name) {
 
 function setup() {
   const p = PropertiesService.getScriptProperties();
-  const url = String(p.getProperty('SHEET_URL') || p.getProperty('SHEET_ID') || '').trim();
+  const sandbox = p.getProperty('SANDBOX') === 'Y';
+  // a beta sandbox always stays on its own copy (SHEET_ID); SHEET_URL there is the real Sheet, used only to copy from
+  const url = sandbox ? String(p.getProperty('SHEET_ID') || '') : String(p.getProperty('SHEET_URL') || p.getProperty('SHEET_ID') || '').trim();
   const m = url.match(/\/d\/([A-Za-z0-9_-]{8,})/) || url.match(/^([A-Za-z0-9_-]{8,})$/);
   if (!m) throw new Error('Add the Script property SHEET_URL (the bot\'s Google Sheet link) first.');
+  if (sandbox && m[1] === p.getProperty('SOURCE_SHEET_ID')) throw new Error('This beta project points at the real Sheet. Run setupBeta again.');
   const ss = SpreadsheetApp.openById(m[1]);
   p.setProperty('SHEET_ID', m[1]);
   SS_MEMO = null;
@@ -230,12 +248,16 @@ function setup() {
   const fast = webFastCheck_();
   const lines = [
     '✅ Web-app backend ready (' + WEB_VERSION + ', bot code ' + BOT_VERSION + ').',
-    'Sheet: ' + ss.getName(),
+    'Mode: ' + (sandbox ? 'BETA sandbox – a private copy of the data, made ' + (p.getProperty('SANDBOX_AT') || '?') + '. The real Sheet and photos are never changed.' : 'live data'),
+    'Sheet: ' + ss.getName() + (sandbox ? ' → ' + ss.getUrl() : ''),
     'Photos folder: ' + p.getProperty('PHOTO_FOLDER_ID'),
     'AI wording: ' + (aiOn_() ? 'on' : 'off (no GEMINI_API_KEY)'),
     'Fast read (Google Sheets API service, optional): ' + (fast ? 'off – ' + fast + '. The web-app works without it (one read per tab).' : 'on'),
-    'Jana PDF via bot: ' + (p.getProperty('BOT_WEBAPP_URL') && p.getProperty('BOT_WEBHOOK_SECRET') ? 'on' : 'off (add BOT_WEBAPP_URL and BOT_WEBHOOK_SECRET)'),
-    'WebUsers tab: ' + list.length + ' people (' + list.filter(function (x) { return x.pin; }).length + ' with a PIN).',
+    'Tanya DPR (chat): ' + webChatState_(),
+    'Jana PDF via bot: ' + (sandbox ? 'off in the beta sandbox (the Telegram bot only reads the real Sheet)'
+      : p.getProperty('BOT_WEBAPP_URL') && p.getProperty('BOT_WEBHOOK_SECRET') ? 'on' : 'off (add BOT_WEBAPP_URL and BOT_WEBHOOK_SECRET)'),
+    'WebUsers tab: ' + list.length + ' people (' + list.filter(function (x) { return x.pin; }).length + ' with a PIN).' +
+      (sandbox ? ' Type a 4-digit PIN in "new_pin" for each tester (beta PINs are separate from the live app).' : ''),
     'NEXT – first time: Deploy → New deployment → Web app (Execute as: Me · Who has access: Anyone).',
     'NEXT – upgrade: Deploy → Manage deployments → ✏️ → Version: New version → Deploy (keeps the same /exec address).'
   ];
@@ -455,9 +477,11 @@ function apiMeta_(u) {
     cats: cats.map(webCatOut_), scopes: scopes,
     status: [{ key: 'NS', label: STATUS_LABEL.NS }, { key: 'IP', label: STATUS_LABEL.IP }, { key: 'CP', label: STATUS_LABEL.CP }],
     weather: String(setting_('WEATHER_OPTIONS') || 'Sunny, Clear, Cloudy, Rainy, Hazy').split(',').map(function (s) { return s.trim(); }).filter(String),
-    ai: aiOn_(), pdf: !!(prop_('BOT_WEBAPP_URL') && prop_('BOT_WEBHOOK_SECRET')), pdfImport: aiOn_(),
+    ai: aiOn_(), pdf: !webSandbox_() && !!(prop_('BOT_WEBAPP_URL') && prop_('BOT_WEBHOOK_SECRET')), pdfImport: aiOn_(),
     maxPhotos: MAX_PHOTOS, pdfPhotos: photosPerActivity_(settings_()),
-    headlineAi: String(setting_('HEADLINE_AI') || 'Y').toUpperCase() !== 'N'
+    headlineAi: String(setting_('HEADLINE_AI') || 'Y').toUpperCase() !== 'N',
+    // w2.0: what this backend offers (older apps ignore these)
+    env: webEnv_(), chat: webChatFor_(u), voice: aiOn_(), guess: aiOn_(), feat: ['search', 'insights', 'cal', 'carry']
   };
 }
 
@@ -497,22 +521,29 @@ function apiDay_(u, b) {
     materials: d.materials.filter(function (m) { return m.arrived_date && m.arrived_date <= date; })
       .sort(function (a, b2) { return a.arrived_date < b2.arrived_date ? 1 : -1; })
       .map(function (m) { return { row: m._row, area: m.area, cat: m.category_key, label: label(m.category_key), item: m.item, date: m.arrived_date }; }),
-    imports: webImportsList_(u, date)
+    imports: webImportsList_(u, date),
+    carry: webCarry_(d, date)                  // w2.0: work still in progress on each system's last working day
   };
 }
 
-/** A photo the web-app may show: only files inside the bot's Photos/yyyy-mm/yyyy-mm-dd folders. */
-function webPhotoFile_(id) {
+/**
+ * A photo the web-app may show: only files inside the bot's Photos/yyyy-mm/yyyy-mm-dd folders.
+ * In a beta sandbox the real Photos folder (PHOTO_READ_FOLDER_ID) may be shown as well, but never changed:
+ * pass own = true before any change (trash), and only files inside this project's own Photos folder come back.
+ */
+function webPhotoFile_(id, own) {
   if (!/^[A-Za-z0-9_-]{20,}$/.test(String(id || ''))) return null;
   let f;
   try { f = DriveApp.getFileById(id); } catch (e) { return null; }
   if (f.isTrashed()) return null;
-  const root = prop_('PHOTO_FOLDER_ID');
+  const roots = [prop_('PHOTO_FOLDER_ID')];
+  const readOnly = own ? '' : prop_('PHOTO_READ_FOLDER_ID');
+  if (readOnly) roots.push(readOnly);
   let hops = 0;
   let it = f.getParents();
   while (it.hasNext() && hops < 3) {
     const p = it.next();
-    if (p.getId() === root) return f;
+    if (roots.indexOf(p.getId()) >= 0) return f;
     it = p.getParents();
     hops++;
   }
@@ -751,16 +782,38 @@ function apiPhotoDel_(b) {
   });
   let trashed = false;
   if (!shared) {
-    const f = webPhotoFile_(pid);
+    const f = webPhotoFile_(pid, true);          // own Photos folder only: a beta sandbox never trashes a real photo
     if (f) { try { f.setTrashed(true); trashed = true; } catch (err) { logErr_('web photo trash', err); } }
   }
   return { photos: out, trashed: trashed };
 }
 
 function apiRemove_(u, b) {
-  const r = removeEntry_(u, String(b.id || ''), true);
+  const id = String(b.id || '');
+  if (!webSandbox_()) {
+    const r = removeEntry_(u, id, true);
+    if (!r.ok) throw webErr_('Aktiviti ini sudah tiada, atau bukan milik anda.');
+    return { photos: r.photos, date: r.date };
+  }
+  // Beta sandbox: the copied rows point at REAL photo files. The bot's removeEntry_ would trash them, so it is
+  // called without photo trashing, and only photos uploaded into the sandbox's own folder are trashed here.
+  const e = activeEntry_(id);
+  const r = removeEntry_(u, id, false);
   if (!r.ok) throw webErr_('Aktiviti ini sudah tiada, atau bukan milik anda.');
-  return { photos: r.photos, date: r.date };
+  let n = 0;
+  if (e && e.source !== 'merged') {
+    const used = {};
+    rows_('Entries').forEach(function (x) {
+      if (x.entry_id === id || x.deleted === 'Y') return;
+      webIds_(x.photo_ids).forEach(function (p) { used[p] = 1; });
+    });
+    webIds_(e.photo_ids).forEach(function (pid) {
+      if (used[pid]) return;
+      const f = webPhotoFile_(pid, true);
+      if (f) { try { f.setTrashed(true); n++; } catch (err) { logErr_('web photo trash', err); } }
+    });
+  }
+  return { photos: n, date: r.date };
 }
 
 function apiNewCat_(u, b) {
@@ -908,6 +961,7 @@ function apiHeadlineSet_(u, b) {
  * sends it to their Telegram chat. Nothing in the bot changes. The app then watches ReportLog for the file.
  */
 function apiReport_(u, b) {
+  if (webSandbox_()) throw webErr_('Dalam beta (salinan data), PDF tidak dijana: bot Telegram hanya membaca Sheet sebenar.', 'sandbox');
   const P = webPeriod_(b);
   if (P.days === 7 && !isEng_(u)) throw webErr_('PDF mingguan untuk engineer sahaja.', 'eng');
   const url = prop_('BOT_WEBAPP_URL');

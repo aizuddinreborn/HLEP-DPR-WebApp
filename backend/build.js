@@ -3,7 +3,7 @@
 /**
  * Builds backend/dist/WebApp.gs, the single file pasted into the web-app's own Apps Script project.
  *
- *   WebApp.gs = backend/src/web.gs (the web API)
+ *   WebApp.gs = backend/src/*.gs (the web API: web.gs first, then the other files in name order)
  *             + the bot functions it needs, copied UNCHANGED from the bot's Code.gs.
  *
  * The copy is made by name: we start from ROOTS, follow every top-level name each copied
@@ -19,7 +19,9 @@ const acorn = require('acorn');
 const walk = require('acorn-walk');
 
 const BOT = process.argv.slice(2).filter((a) => !a.startsWith('--'))[0] || process.env.BOT_CODE || '/home/claude/hlep-dpr-bot/Code.gs';
-const WEB = path.join(__dirname, 'src', 'web.gs');
+const SRC = path.join(__dirname, 'src');
+// The web-app's own code: web.gs first, then every other src/*.gs in name order (web_beta.gs, web_chat.gs, …).
+const webFiles = () => ['web.gs'].concat(fs.readdirSync(SRC).filter((f) => /\.gs$/.test(f) && f !== 'web.gs').sort());
 const OUT = path.join(__dirname, 'dist', 'WebApp.gs');
 
 // Bot functions/constants the web API calls directly.
@@ -70,7 +72,7 @@ function usedNames(node) {
 
 function build() {
   const bot = fs.readFileSync(BOT, 'utf8');
-  const web = fs.readFileSync(WEB, 'utf8');
+  const web = webFiles().map((f) => fs.readFileSync(path.join(SRC, f), 'utf8').trim()).join('\n\n');
   const B = topLevel(bot, 'Code.gs');
   const W = topLevel(web, 'web.gs');
   const version = (bot.match(/const BOT_VERSION = '([^']+)'/) || [])[1] || '?';
