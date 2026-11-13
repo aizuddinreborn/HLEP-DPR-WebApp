@@ -165,7 +165,8 @@ function apiSearch_(u, b) {
     total: r.list.length, offset: offset, loose: r.loose,
     items: r.list.slice(offset, offset + limit).map(function (e) { return webEntryOut_(e, u); }),
     more: r.list.length > offset + limit,
-    words: r.tokens.map(function (t) { return t[0]; })
+    // every spelling that counted as a match ("kabel" also matched "cable"), for marking the words in the results
+    words: r.tokens.reduce(function (all, t) { t.forEach(function (w) { if (all.indexOf(w) < 0) all.push(w); }); return all; }, [])
   };
   if (!offset) {
     const mats = (f.q || f.cat) && !f.status && !f.shift && !f.who && !f.src && !f.photos ? webFindMats_(f) : [];

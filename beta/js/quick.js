@@ -4,7 +4,12 @@ const { $, $$, esc, ic, ls, api, toast, S, dmy } = H;
 
 // ---------- "Sambung": work still in progress on each system's last working day ----------
 function homeTop(d) {
-  const list = d.carry || [];
+  // a line already continued today (same system, same opening words) needs no reminder
+  const key = (t) => String(t).toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().split(' ').slice(0, 4).join(' ');
+  const done = {};
+  d.entries.forEach((e) => { done[e.cat + '|' + key(e.text)] = 1; });
+  const list = (d.carry || []).filter((c) => !done[c.cat + '|' + key(c.text)]);
+  d.carryShown = list;
   if (!list.length || S.date !== H.today() || ls.get('carryHide', '') === S.date) return '';
   return '<div class="carry-h"><h2>Sambung kerja sebelum ini</h2><button data-carryx>Sembunyi</button></div><div class="carry">' + list.map((c, i) =>
     '<div class="carry-it"><div class="k">' + esc(c.catLabel) + '<span>' + esc(H.relDay(c.date) === 'Semalam' ? 'semalam' : dmy(c.date).slice(0, 5)) + '</span></div><div class="t">' + esc(c.text) + '</div>' +
@@ -14,7 +19,7 @@ function homeBind(d) {
   const x = $('[data-carryx]'); if (x) x.onclick = () => { ls.set('carryHide', S.date); H.render(); };
   $$('[data-carry]').forEach((b) => {
     b.onclick = () => {
-      const c = d.carry[Number(b.dataset.carry)];
+      const c = (d.carryShown || d.carry)[Number(b.dataset.carry)];
       H.buzz();
       // "Sambung" keeps the wording (still ongoing); "Siap" lets the AI rewrite it as completed
       if (b.dataset.as === 'IP') H.addSheet({ area: c.area, cat: c.cat, status: 'IP', shift: c.shift, raw: c.raw || c.text, text: c.text, date: S.date });

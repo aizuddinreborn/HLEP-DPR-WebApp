@@ -53,7 +53,7 @@ function me() {
   const p = themePref();
   const env = S.meta && S.meta.env;
   let h = '<div class="section-t"><h2>Paparan</h2></div><div class="card"><div class="theme-seg">' +
-    [['auto', 'phone', 'Ikut telefon'], ['light', 'sun', 'Cerah'], ['dark', 'moon', 'Gelap']].map((t) => '<button class="opt-card" data-theme="' + t[0] + '" aria-pressed="' + (p === t[0]) + '"><span class="ic">' + ic(t[1], 's') + '</span>' + t[2] + '</button>').join('') + '</div></div>';
+    [['auto', 'phone', 'Ikut telefon'], ['light', 'sun', 'Cerah'], ['dark', 'moon', 'Gelap']].map((t) => '<button class="opt-card" data-themeset="' + t[0] + '" aria-pressed="' + (p === t[0]) + '"><span class="ic">' + ic(t[1], 's') + '</span>' + t[2] + '</button>').join('') + '</div></div>';
   if (H.isEng()) h += '<div class="section-t"><h2>Tanya DPR</h2><span>siapa boleh guna</span></div><div class="card" id="prefl"><button class="btn soft block" data-prefl>' + ic('sparkles', 's') + ' Buka tetapan</button></div>';
   if (H.beta) {
     h += '<div class="section-t"><h2>Versi ujian (beta)</h2></div><div class="card">' +
@@ -82,7 +82,7 @@ async function prefs() {
 }
 
 function meBind() {
-  $$('[data-theme]').forEach((b) => { b.onclick = () => { H.buzz(); applyTheme(b.dataset.theme); H.render(); }; });
+  $$('.opt-card[data-themeset]').forEach((b) => { b.onclick = () => { H.buzz(); applyTheme(b.dataset.themeset); H.render(); }; });
   const pl = $('[data-prefl]'); if (pl) pl.onclick = () => prefs();
   const rc = $('[data-recopy]'); if (rc) rc.onclick = (e) => refreshCopy(e.currentTarget);
   const t = $('[data-tour]'); if (t) t.onclick = () => tour();

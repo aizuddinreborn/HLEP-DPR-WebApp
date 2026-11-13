@@ -54,7 +54,7 @@ async function run(label, opts, theme) {
   await page.click('[data-dpick]'); await page.waitForSelector('.cal-d'); await page.click('.chip[data-d]:has-text("Hari ini")'); await page.waitForTimeout(600);
 
   // detail
-  await page.locator('.act[data-entry]').first().click(); await page.waitForSelector('.d-text'); await page.waitForSelector('.tl', { timeout: 8000 }); await page.waitForTimeout(400); await shot('05-detail');
+  await page.locator('.act[data-entry] .txt').first().click(); await page.waitForSelector('.d-text'); await page.waitForSelector('.tl', { timeout: 8000 }); await page.waitForTimeout(400); await shot('05-detail');
   ok(await page.locator('.acts-row button').count() === 4, 'detail offers Ubah, Sambung, Kongsi, Tanya');
   await page.click('.sheet-h [data-close]'); await page.waitForTimeout(400);
 
@@ -93,19 +93,21 @@ async function run(label, opts, theme) {
   await page.click('.sheet-h [data-close]'); await page.waitForTimeout(400);
 
   // me: theme switch
-  await page.click('.tab[data-tab="me"]'); await page.waitForSelector('[data-theme]');
+  await page.click('.tab[data-tab="me"]'); await page.waitForSelector('[data-themeset]');
   const other = theme === 'dark' ? 'light' : 'dark';
-  await page.click('[data-theme="' + other + '"]'); await page.waitForTimeout(300);
+  await page.click('[data-themeset="' + other + '"]'); await page.waitForTimeout(300);
   ok((await page.evaluate(() => document.documentElement.dataset.theme)) === other, 'theme switch → ' + other);
-  await page.click('[data-theme="auto"]'); await page.waitForTimeout(200);
+  await page.click('[data-themeset="auto"]'); await page.waitForTimeout(200);
   await page.click('[data-prefl]'); await page.waitForSelector('[data-pk]'); await shot('15-me');
   await browser.close();
 }
 
 (async () => {
-  await run('phone-light', { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true }, 'light');
-  await run('phone-dark', { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true }, 'dark');
-  await run('laptop-light', { viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 }, 'light');
+  const only = process.env.ONLY || '';
+  const phone = { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true };
+  if (!only || only === 'phone-light') await run('phone-light', phone, 'light');
+  if (!only || only === 'phone-dark') await run('phone-dark', phone, 'dark');
+  if (!only || only === 'laptop-light') await run('laptop-light', { viewport: { width: 1280, height: 800 }, deviceScaleFactor: 1 }, 'light');
   console.log('\n' + checks + ' checks, ' + errors.length + ' problems');
   errors.forEach((e) => console.log('  • ' + e));
   process.exit(errors.length ? 1 : 0);
