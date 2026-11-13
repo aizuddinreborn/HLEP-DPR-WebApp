@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="ms">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>HLEP DPR</title>
+  <meta name="description" content="Laporan kerja harian elektrik HLEP – SJ Chenderoh">
+  <meta name="theme-color" content="#F4F1FF" id="themecolor">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="HLEP DPR">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png" type="image/png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script src="config.js"></script>
+  <script>
+    // Theme before the first paint (no flash): the saved choice, or the phone's setting.
+    (function () {
+      try {
+        var c = self.HLEP_CONFIG || {};
+        if (c.channel === 'beta') { document.title = 'HLEP DPR Beta'; var m = document.createElement('meta'); m.name = 'robots'; m.content = 'noindex'; document.head.appendChild(m); }
+        var t = JSON.parse(localStorage.getItem((c.channel === 'beta' ? 'hlepb.' : 'hlep.') + 'theme') || '"auto"');
+        if (t !== 'light' && t !== 'dark') t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        document.documentElement.dataset.theme = t;
+        document.getElementById('themecolor').content = t === 'dark' ? '#13111D' : '#F4F1FF';
+      } catch (e) { /* default light */ }
+    })();
+    window.HLEP_DEFER = true;      // js/main.js starts the app once the feature modules are in
+  </script>
+  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="v2.css">
+</head>
+<body>
+  <div id="app" aria-live="polite">
+    <div class="splash">
+      <div class="splash-logo"><img src="icons/icon-192.png" alt="" width="72" height="72"></div>
+      <div class="splash-name">HLEP DPR</div>
+    </div>
+  </div>
+  <div id="layer"></div>
+  <div id="toasts" role="status" aria-live="polite"></div>
+  <script src="app.js"></script>
+  <script type="module" src="js/main.js"></script>
+  <script>
+    // If the modules cannot load (very old browser, broken download), the core app still starts on its own.
+    setTimeout(function () { if (window.HLEP && !window.HLEP.started) window.HLEP.start(); }, 6000);
+  </script>
+</body>
+</html>

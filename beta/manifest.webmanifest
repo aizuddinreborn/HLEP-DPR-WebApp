@@ -1,0 +1,33 @@
+{
+  "id": "hlep-dpr-beta",
+  "name": "HLEP DPR Beta",
+  "short_name": "DPR Beta",
+  "description": "Versi ujian HLEP DPR – data salinan, bukan laporan sebenar",
+  "lang": "ms",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#F4F1FF",
+  "theme_color": "#F4F1FF",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "icons/maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Aktiviti baru", "short_name": "Tambah", "url": "./?do=add", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Tanya DPR", "short_name": "Tanya", "url": "./?do=chat", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Cari rekod", "short_name": "Cari", "url": "./?do=search", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] }
+  ],
+  "share_target": {
+    "action": "./share",
+    "method": "POST",
+    "enctype": "multipart/form-data",
+    "params": {
+      "title": "title",
+      "text": "text",
+      "files": [{ "name": "photos", "accept": ["image/jpeg", "image/png", "image/webp", "image/heic", "image/*"] }]
+    }
+  }
+}
