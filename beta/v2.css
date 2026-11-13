@@ -347,3 +347,5 @@ mark { background: var(--butter-50); color: inherit; border-radius: 4px; padding
   .segbar { max-width: 420px; }
   .tabbar-in { grid-template-columns: 1fr; }
 }
+
+.searchbar input::-webkit-search-cancel-button { display: none; }
