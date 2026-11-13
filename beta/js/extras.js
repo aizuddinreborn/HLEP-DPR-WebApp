@@ -143,8 +143,13 @@ function badge() {
   }, 4000);
 }
 
+// the tour shows once per phone, the first time the app is open and signed in (also right after a first login)
 export function afterStart() {
-  if (S.session && H.beta && ls.get('tour', 0) < TOUR_V && !H.layers.length) setTimeout(() => { if (S.session && !H.layers.length) tour(); }, 900);
+  if (!H.beta || ls.get('tour', 0) >= TOUR_V) return;
+  const t = setInterval(() => {
+    if (ls.get('tour', 0) >= TOUR_V) return clearInterval(t);
+    if (S.session && S.meta && $('#shell') && !H.layers.length) { clearInterval(t); tour(); }
+  }, 900);
 }
 
 export function init() {
