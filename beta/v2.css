@@ -336,8 +336,8 @@ mark { background: var(--butter-50); color: inherit; border-radius: 4px; padding
 
 /* ---------- laptop ---------- */
 @media (min-width: 900px) {
-  .kpis { grid-template-columns: repeat(4, 1fr); }
-  .kpi.hero { grid-column: span 2; }
+  .kpis { grid-template-columns: 1.9fr repeat(4, 1fr); }
+  .kpi.hero { grid-column: auto; }
   .composer { left: 128px; right: 28px; bottom: 22px; }
   .composer-in { max-width: 984px; }
   #shell[data-tab="chat"] { padding-bottom: 140px; }

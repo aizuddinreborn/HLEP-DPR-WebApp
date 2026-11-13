@@ -47,7 +47,7 @@ function view() {
   if (st.err) h += '<div class="banner lav" style="margin-bottom:10px">' + ic('clock') + '<div class="grow">Paparan terakhir (' + esc(st.err) + ')</div></div>';
 
   h += '<div class="kpis">';
-  h += '<div class="kpi hero"><div class="ringw">' + ring(avg) + '<b>' + (avg == null ? '–' : avg + '%') + '</b></div><div class="grow"><div class="l">Purata kemajuan</div><div class="n">' + withPct.length + ' <small style="color:rgba(255,255,255,.8)">sistem ber-%</small></div>' +
+  h += '<div class="kpi hero"><div class="ringw">' + ring(avg) + '<b>' + (avg == null ? '–' : avg + '%') + '</b></div><div class="grow"><div class="l">Purata kemajuan</div><div class="n">' + withPct.length + ' <small style="color:rgba(255,255,255,.8)">sistem diukur</small></div>' +
     '<div class="d">' + esc(dmy(d.range.from).slice(0, 5) + ' – ' + dmy(d.range.to)) + '</div></div></div>';
   h += '<div class="kpi"><div class="l">' + ic('flag', 'xs') + ' Aktiviti</div><div class="n">' + k.acts + '</div>' + delta(k.acts, p.acts, unit) + '</div>';
   h += '<div class="kpi"><div class="l">' + ic('check', 'xs') + ' Siap (CP)</div><div class="n">' + k.cp + ' <small>/ ' + k.acts + '</small></div>' + delta(k.cp, p.cp, unit) + '</div>';

@@ -68,3 +68,7 @@ npm run dev        # local preview on http://localhost:8080 with a demo day (PIN
 
 The tests and the preview need the bot's dev-harness mocks and the bot's `Code.gs`.
 Set `HARNESS=/path/to/harness` and `BOT_CODE=/path/to/Code.gs`; see `backend/test/world.js`.
+
+## Beta (2.0)
+
+Upgrades are tried in `beta/`, a separate copy of the app with its own backend and a private copy of the data; the live app in `app/` is not touched. See [docs/BETA.md](docs/BETA.md).

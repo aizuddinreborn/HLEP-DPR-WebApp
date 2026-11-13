@@ -78,3 +78,9 @@ Defaults I set (the user can change them): the chat only answers, it cannot chan
 ## Status log
 
 - 12/11/2026: plan written; interview answers recorded. Nothing built yet.
+- 13/11/2026: backend w2.0-b1 done (sandbox, chat, search, insights, calendar, carry-over, voice, guess; 350 checks).
+- 13/11/2026: beta frontend done in `beta/` (core `app.js` + modules in `beta/js/`): new navigation, dark mode, Tanya DPR,
+  Papan, Cari, activity detail, calendar, faster entry, tour, gestures. `tools/beta-server.js` previews it with the real
+  backend code; `tools/beta-walk.js` passes 15 checks on phone light, phone dark and laptop with no console errors.
+  `app/` is unchanged (`git diff main -- app/` is empty). Setup guide: `docs/BETA.md`.
+- Open: where to publish the beta pages (needs the owner's decision); live test with real Google/Gemini by the owner.
