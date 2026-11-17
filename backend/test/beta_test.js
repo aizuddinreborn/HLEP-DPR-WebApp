@@ -56,7 +56,7 @@ const idToday = save(T, '10/10/2026', 'U1', 'U1_EPS', 'IP', 'D', 'Cable terminat
 section('Meta tells the app what this backend offers');
 {
   const m = api('meta', { t: T });
-  ok(m.ok && m.v === 'w2.0-b1' && m.env && m.env.sandbox === false, 'version w2.0-b1, live data (not a sandbox)');
+  ok(m.ok && m.v === 'w2.0' && m.env && m.env.sandbox === false, 'version w2.0, live data (not a sandbox)');
   ok(m.chat && m.chat.on === true && m.chat.provider === 'gemini' && m.voice === true && m.guess === true, 'chat on with Gemini; voice and photo guess on');
   ok(Array.isArray(m.feat) && ['search', 'insights', 'cal', 'carry'].every((f) => m.feat.indexOf(f) >= 0), 'feature list for the app');
 }

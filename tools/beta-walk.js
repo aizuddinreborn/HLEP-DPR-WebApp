@@ -5,6 +5,7 @@ const path = require('path');
 const fs = require('fs');
 
 const URL0 = process.env.URL || 'http://localhost:8090/';
+const BETA = process.env.BETA !== '0';           // BETA=0: the live app (no copy-of-data banner)
 const OUT = process.argv[2] || path.join(__dirname, '.cache', 'beta-shots');
 fs.mkdirSync(OUT, { recursive: true });
 const errors = [];
@@ -34,7 +35,7 @@ async function run(label, opts, theme) {
   for (let i = 0; i < 5; i++) await page.click('[data-next]');
   await page.waitForSelector('.act');
   await page.waitForTimeout(600);
-  ok(await page.locator('.ribbon').count() === 1, 'beta banner says the data is a copy');
+  ok(await page.locator('.ribbon').count() === (BETA ? 1 : 0), BETA ? 'beta banner says the data is a copy' : 'no beta banner in the live app');
   ok(await page.locator('.carry-it').count() >= 1, 'carry-over cards on today');
   ok(await page.locator('.segb').count() === 3, 'Aktiviti / Data / Laporan segments');
   ok((await page.evaluate(() => document.documentElement.dataset.theme)) === theme, 'theme follows the device (' + theme + ')');

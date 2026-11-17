@@ -1,6 +1,6 @@
 // Tanya DPR: ask about the records in plain words. The backend looks things up and answers with its sources.
 // The assistant only reads: nothing it says changes a record.
-import { H, md, copyText, shareText, unitName, tagm, canRecord, record, micError } from './ui.js';
+import { H, md, copyText, shareText, unitName, tagm, canRecord, record, micError, oldBackend, upgradeCard } from './ui.js';
 const { $, $$, esc, ic, ls, api, toast, S, dmy } = H;
 
 const KEEP = 40;            // messages kept on the phone
@@ -75,6 +75,7 @@ function msgHtml(m, i) {
 function view() {
   const c = S.meta && S.meta.chat;
   let h = H.topbar('Tanya DPR', 'Jawapan daripada rekod laporan');
+  if (oldBackend()) return h + upgradeCard('Tanya DPR');
   if (S.meta && !(c && c.on)) return h + offView(c);
   h += '<div class="chat-wrap">';
   if (!st.msgs.length) {

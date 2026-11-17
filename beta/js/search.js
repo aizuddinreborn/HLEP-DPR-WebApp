@@ -1,10 +1,11 @@
 // Cari: find any old record by words (Malay or English), unit, status, period, system.
-import { H, resCard, unitName } from './ui.js';
+import { H, resCard, unitName, oldBackend } from './ui.js';
 const { $, $$, esc, ic, ls, api, dmy } = H;
 
 const PERIODS = [['', 'Bila-bila'], ['7', '7 hari'], ['30', '30 hari'], ['90', '90 hari']];
 
 function open(preset) {
+  if (oldBackend()) return H.toast('Carian perlukan backend versi w2.0. Minta engineer kemas kini.', 'bad');
   preset = preset || {};
   const f = { q: preset.q || '', unit: preset.unit || '', status: preset.status || '', period: preset.period || '', photos: false, cat: preset.cat || '', catLabel: preset.catLabel || '' };
   let res = null, items = [], busy = false, err = '', seq = 0, timer = null;

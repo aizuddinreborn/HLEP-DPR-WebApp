@@ -64,6 +64,14 @@ export function md(src, cite) {
   return out.join('');
 }
 
+// ---------- what the backend offers ----------
+/** True when this backend has a 2.0 feature ("search", "insights", "cal", "carry"). */
+export const has = (f) => !!(S.meta && (S.meta.feat || []).indexOf(f) >= 0);
+/** The pages are 2.0 but the backend is older (it sends no feature list): the new screens explain instead of failing. */
+export const oldBackend = () => !!(S.meta && !S.meta.feat);
+export const upgradeCard = (what) => '<div class="card chat-off"><div class="orb">' + ic('tool') + '</div><h3>' + esc(what) + ' belum tersedia</h3>' +
+  '<p>Backend app ini masih versi lama (' + esc((S.meta && S.meta.v) || '?') + '). Engineer perlu kemas kini Apps Script ke versi w2.0. Aktiviti, Data dan Laporan berfungsi seperti biasa.</p></div>';
+
 // ---------- small pieces of UI ----------
 export const unitName = (a) => (a === 'U4' ? 'Unit 4' : 'Unit 1');
 export const tagm = (a) => '<span class="tagm ' + esc(a) + '">' + (a === 'U4' ? 'U4' : 'U1') + '</span>';

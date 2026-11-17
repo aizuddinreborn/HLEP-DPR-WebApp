@@ -6,7 +6,7 @@ The team keeps using the live app; nothing you do in the beta reaches the real S
 | | Live app | Beta |
 |---|---|---|
 | Web pages | `app/` | `beta/` |
-| Backend (Apps Script project) | the existing one (w1.4.1) | a **new** project (w2.0-b1) |
+| Backend (Apps Script project) | the existing one | a **new** project (same code, w2.0) |
 | Google Sheet | the bot's real Sheet | a private copy in Drive folder `HLEP DPR Beta (sandbox)` |
 | Photos | real Photos folder | new photos go to the sandbox folder; real photos are shown, never changed |
 | Jana PDF | via the bot | off (the bot only reads the real Sheet) |
@@ -52,13 +52,20 @@ What was added in the beta is not carried over; the old copy is kept in the sand
 
 Add `ANTHROPIC_API_KEY` to the beta project's Script properties. Tanya DPR then uses Claude; remove the key (or set `CHAT_PROVIDER` = `gemini`) to go back. `CLAUDE_CHAT_MODEL` changes the model. Limits: 30 questions an hour and 150 a day per person (`CHAT_LIMIT_DAY`).
 
-## Promote the beta to the live app (when you are happy)
+## Promote the beta to the live app
 
-1. Paste `WebApp-beta.gs` into the **live** Apps Script project, run `setup`, then **Deploy → Manage deployments → Edit → New version** (same address).
-2. Replace the files in `app/` with those in `beta/`, and in `app/config.js` remove `channel: 'beta'` and keep the live `api` address.
-3. In `app/sw.js` rename the cache prefix to `hlep-dpr-` so phones pick up the new version.
+Order matters: **backend first, then the pages.**
 
-Until then the live app and its backend stay exactly as they are.
+1. Live Apps Script project (the one the live app uses): select all code, paste `WebApp.gs` (w2.0) over it, save.
+2. Run **`setup`** (not `setupBeta`). The log says `Mode: live data` and `Web-app backend ready (w2.0 …)`.
+3. **Deploy → Manage deployments → ✏️ Edit → Version: New version → Deploy.** Same address; phones keep working.
+4. Open the live `/exec` address in a browser: it must show `"v":"w2.0"`.
+5. Then the pages: `node tools/promote.js 2.0.0` copies `beta/` over `app/` (keeps the live backend address, the video
+   and the installed app's name), and the result is published on `main`.
+
+Phones pick up 2.0 the next time the app is opened; logins and activities waiting to be sent are kept.
+If the pages ever reach phones before the backend is upgraded, the new screens say "backend perlu dinaik taraf"
+while Aktiviti, Data and Laporan keep working (`tools/upgrade-check.js` checks both cases).
 
 ## Try it on a computer without Google
 

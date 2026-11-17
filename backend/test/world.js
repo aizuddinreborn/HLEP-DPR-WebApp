@@ -19,7 +19,7 @@ const vm = require('vm');
 
 const HARNESS = process.env.HARNESS || '/tmp/claude-0/-home-user/6365165a-a28c-5a36-abf9-834ec0218f72/scratchpad/ws/harness';
 const BOT_CODE = process.env.BOT_CODE || '/home/claude/hlep-dpr-bot/Code.gs';
-const WEB_CODE = path.join(__dirname, '..', 'dist', 'WebApp.gs');
+const WEB_CODE = process.env.WEB_CODE || path.join(__dirname, '..', 'dist', 'WebApp.gs');
 const BOT_URL = 'https://script.google.com/macros/s/AKfycbFAKE/exec';
 const { makeEnv } = require(path.join(HARNESS, 'mocks'));
 

@@ -84,3 +84,4 @@ Defaults I set (the user can change them): the chat only answers, it cannot chan
   backend code; `tools/beta-walk.js` passes 15 checks on phone light, phone dark and laptop with no console errors.
   `app/` is unchanged (`git diff main -- app/` is empty). Setup guide: `docs/BETA.md`.
 - Open: where to publish the beta pages (needs the owner's decision); live test with real Google/Gemini by the owner.
+- 17/11/2026: owner approved the beta. Branch live-2.0: app/ promoted to 2.0.0 (tools/promote.js), backend w2.0; waiting for the live backend upgrade before publishing on main. upgrade-check passes on the old (w1.4.1) and new backend.

@@ -54,14 +54,15 @@ function me() {
   const env = S.meta && S.meta.env;
   let h = '<div class="section-t"><h2>Paparan</h2></div><div class="card"><div class="theme-seg">' +
     [['auto', 'phone', 'Ikut telefon'], ['light', 'sun', 'Cerah'], ['dark', 'moon', 'Gelap']].map((t) => '<button class="opt-card" data-themeset="' + t[0] + '" aria-pressed="' + (p === t[0]) + '"><span class="ic">' + ic(t[1], 's') + '</span>' + t[2] + '</button>').join('') + '</div></div>';
-  if (H.isEng()) h += '<div class="section-t"><h2>Tanya DPR</h2><span>siapa boleh guna</span></div><div class="card" id="prefl"><button class="btn soft block" data-prefl>' + ic('sparkles', 's') + ' Buka tetapan</button></div>';
+  // the chat-access setting exists from backend w2.0 on ("chat" in meta)
+  if (H.isEng() && S.meta && S.meta.chat) h += '<div class="section-t"><h2>Tanya DPR</h2><span>siapa boleh guna</span></div><div class="card" id="prefl"><button class="btn soft block" data-prefl>' + ic('sparkles', 's') + ' Buka tetapan</button></div>';
   if (H.beta) {
     h += '<div class="section-t"><h2>Versi ujian (beta)</h2></div><div class="card">' +
       (env && env.sandbox ? '<div class="list-row"><span class="ic" style="background:var(--butter-50);color:var(--butter)">' + ic('copy', 's') + '</span><div class="grow"><div class="t">Data salinan</div><div class="s">Disalin ' + esc(dmy(String(env.at).slice(0, 10)) + ' ' + H.hhmm(env.at)) + ' · Sheet sebenar tidak disentuh</div></div></div>' +
         (H.isEng() ? '<button class="btn soft block" style="margin-top:12px" data-recopy>' + ic('sync', 's') + ' Salin semula data sebenar</button>' : '')
-        : '<div class="banner rose">' + ic('warn') + '<div class="grow">Backend ini bukan salinan (sandbox).</div></div>') +
-      '<button class="list-row" style="width:100%;text-align:left" data-tour><span class="ic">' + ic('gift', 's') + '</span><span class="grow"><span class="t">Apa yang baru</span><br><span class="s">Lawatan ringkas ciri 2.0</span></span>' + ic('right', 's') + '</button></div>';
+        : '<div class="banner rose">' + ic('warn') + '<div class="grow">Backend ini bukan salinan (sandbox).</div></div>') + '</div>';
   }
+  h += '<div class="section-t"><h2>Bantuan</h2></div><div class="card"><button class="list-row" style="width:100%;text-align:left" data-tour><span class="ic">' + ic('gift', 's') + '</span><span class="grow"><span class="t">Apa yang baru</span><br><span class="s">Lawatan ringkas ciri 2.0</span></span>' + ic('right', 's') + '</button></div>';
   return h;
 }
 
@@ -145,10 +146,11 @@ function badge() {
 
 // the tour shows once per phone, the first time the app is open and signed in (also right after a first login)
 export function afterStart() {
-  if (!H.beta || ls.get('tour', 0) >= TOUR_V) return;
+  if (ls.get('tour', 0) >= TOUR_V) return;
   const t = setInterval(() => {
     if (ls.get('tour', 0) >= TOUR_V) return clearInterval(t);
-    if (S.session && S.meta && $('#shell') && !H.layers.length) { clearInterval(t); tour(); }
+    // after the backend is on w2.0 (the tour shows its new screens)
+    if (S.session && S.meta && S.meta.feat && $('#shell') && !H.layers.length) { clearInterval(t); tour(); }
   }, 900);
 }
 

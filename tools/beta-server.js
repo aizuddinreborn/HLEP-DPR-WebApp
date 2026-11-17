@@ -2,6 +2,7 @@
 // second Apps Script project in SANDBOX mode (setupBeta: a private copy of the simulated Sheet), with three weeks of
 // demo records. The AI is a scripted stand-in that makes real lookups through the backend's own tool loop.
 //   node backend/build.js && node tools/beta-server.js [port]        PIN for every demo user: 1234
+//   MODE=live: serves app/ against the LIVE web project (real data mode, not the sandbox) instead.
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
@@ -9,7 +10,8 @@ const { makeWorld } = require('../backend/test/world');
 const photos = require('./demo-photos');
 
 const PORT = Number(process.argv[2] || process.env.PORT || 8090);
-const APP = path.join(__dirname, '..', 'beta');
+const LIVE = process.env.MODE === 'live';
+const APP = path.join(__dirname, '..', LIVE ? 'app' : 'beta');
 const DAY = 86400000;
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.png': 'image/png', '.jpg': 'image/jpeg', '.svg': 'image/svg+xml', '.webmanifest': 'application/manifest+json' };
 const ymd = (t) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kuala_Lumpur', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(t));
@@ -174,13 +176,17 @@ async function main() {
   env.clock.set(now);
 
   // the BETA project: its own Script properties, then setupBeta → a private copy
-  const B = W.newWeb({ SHEET_URL: 'https://docs.google.com/spreadsheets/d/SHEET123/edit#gid=0', GEMINI_API_KEY: 'AIzaFAKEKEY' });
-  thumbs(B.web);
-  const log = B.webExec(() => B.web.setupBeta());
-  const copy = W.books[B.sep.props.SHEET_ID];
-  pins(copy._sheets.find((s) => s.name === 'WebUsers'));
+  // (MODE=live serves the live project only; it may also be an older backend, set with WEB_CODE)
+  let B = null;
+  if (!LIVE) {
+    B = W.newWeb({ SHEET_URL: 'https://docs.google.com/spreadsheets/d/SHEET123/edit#gid=0', GEMINI_API_KEY: 'AIzaFAKEKEY' });
+    thumbs(B.web);
+    const log = B.webExec(() => B.web.setupBeta());
+    const copy = W.books[B.sep.props.SHEET_ID];
+    pins(copy._sheets.find((s) => s.name === 'WebUsers'));
+    console.log(String(log).split('\n').filter((l) => /Mode:|Tanya DPR|ready/.test(l)).join('\n'));
+  }
   env.clock.add(61000);
-  console.log(String(log).split('\n').filter((l) => /Mode:|Tanya DPR|ready/.test(l)).join('\n'));
   console.log('Team PIN for every demo user: 1234');
 
   http.createServer((req, res) => {
@@ -190,7 +196,8 @@ async function main() {
       req.on('data', (c) => { body += c; });
       req.on('end', () => {
         let out;
-        try { out = B.webExec(() => B.web.doPost({ postData: { contents: JSON.stringify(JSON.parse(body || '{}')) } })).content; }
+        const X = LIVE ? W : B;
+        try { out = X.webExec(() => X.web.doPost({ postData: { contents: JSON.stringify(JSON.parse(body || '{}')) } })).content; }
         catch (e) { out = JSON.stringify({ ok: false, err: String(e.message || e) }); }
         const delay = /"a":"chat"/.test(body) ? Number(process.env.CHAT_DELAY || 1800) : Number(process.env.DELAY || 200);
         setTimeout(() => { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(out); }, delay);
@@ -199,11 +206,11 @@ async function main() {
     }
     let p = decodeURIComponent(req.url.split('?')[0]);
     if (p === '/') p = '/index.html';
-    if (p === '/config.js') { res.writeHead(200, { 'Content-Type': TYPES['.js'] }); res.end("self.HLEP_CONFIG = { channel: 'beta', api: '/api', video: '' };"); return; }
+    if (p === '/config.js') { res.writeHead(200, { 'Content-Type': TYPES['.js'] }); res.end(LIVE ? "self.HLEP_CONFIG = { api: '/api' };" : "self.HLEP_CONFIG = { channel: 'beta', api: '/api', video: '' };"); return; }
     const f = path.join(APP, path.normalize(p).replace(/^(\.\.[/\\])+/, ''));
     if (!f.startsWith(APP) || !fs.existsSync(f) || fs.statSync(f).isDirectory()) { res.writeHead(404); res.end('not found'); return; }
     res.writeHead(200, { 'Content-Type': TYPES[path.extname(f)] || 'application/octet-stream', 'Cache-Control': 'no-store' });
     fs.createReadStream(f).pipe(res);
-  }).listen(PORT, () => console.log('HLEP DPR BETA preview on http://localhost:' + PORT));
+  }).listen(PORT, () => console.log('HLEP DPR ' + (LIVE ? 'LIVE-mode' : 'BETA') + ' preview on http://localhost:' + PORT));
 }
 main().catch((e) => { console.error(e); process.exit(1); });

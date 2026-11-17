@@ -1,5 +1,5 @@
 // Papan: progress at a glance. One request ("insights") feeds the whole screen; the last copy shows at once.
-import { H, unitName, tagm, dayWord } from './ui.js';
+import { H, unitName, tagm, dayWord, oldBackend, upgradeCard } from './ui.js';
 import { stackBars, miniBars, spark, pctLine, ring } from './charts.js';
 const { $, $$, esc, ic, ls, api, S, dmy } = H;
 
@@ -33,6 +33,7 @@ const ATTN = {
 };
 
 function view() {
+  if (oldBackend()) return H.topbar('Papan', 'Kemajuan sekilas pandang') + upgradeCard('Papan');
   load();
   const d = st.data[st.days];
   let h = H.topbar('Papan', 'Kemajuan sekilas pandang');

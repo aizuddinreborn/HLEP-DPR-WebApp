@@ -1,11 +1,12 @@
 // Date picker as a month grid: each day shows how many activities it has, so old records are one tap away.
-import { H } from './ui.js';
+import { H, oldBackend } from './ui.js';
 const { $, $$, esc, ic, api, dmy } = H;
 
 const months = {};          // 'yyyy-mm' → { days: { ymd: { n, cp } }, at }
 const BULAN_PENUH = ['Januari', 'Februari', 'Mac', 'April', 'Mei', 'Jun', 'Julai', 'Ogos', 'September', 'Oktober', 'November', 'Disember'];
 
 function open(cur, cb) {
+  if (oldBackend()) return H.pickDate(cur, cb);          // the old backend has no day counts: the plain picker
   let month = cur.slice(0, 7);
   const today = H.today();
   const L = H.openLayer('<div id="calb"></div>', { title: 'Pilih tarikh' });
